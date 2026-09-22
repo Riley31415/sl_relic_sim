@@ -73,3 +73,31 @@ give me a table with all of the current 8 levels x the 2 strategies showing expe
 for 999,0 this means the percentage of attempts that reached the maximum glory (not 999 but whatever the max is for the level, and 0 despair)
 
 for 4,2, the percentage of attempts with >=4 glory, <=2 despair
+
+# full sim
+next we will create a 3rd sim LEVELS.md
+
+this will simulate the cost to reach a certain level of inheritance, and also output the avg crit relic amp after reaching that level.
+
+relic names (in order):
+giant's right hand
+demon eye of weakness (this is the crit relic)
+oath of immortality
+sacred tree of rebirth
+ring of lightning
+golden start
+seal of the legendary archer
+veil of the night
+spark of eternity
+mermaid's tear
+eye of the sky
+crown of the great mountain
+
+the requirements are in the attached image
+they can either be: reaching a specific (x,y) requirement for 1 or more relics
+reach a total glory >= x and despair <= y
+have EVERY relic reach a specific (x,y) requirement
+
+for now, we can only sim up to level 9
+
+you need to test and analyze multiple approaches to find the minimum cost to reach the maximum level (9 for now), and then the output will also show that strategies intermediate cost for the previous levels

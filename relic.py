@@ -13,9 +13,13 @@ Monte Carlo playouts are available (--mc) purely as a cross-check.
 
 from __future__ import annotations
 
+import hashlib
+import os
+import pickle
 import random
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+from pathlib import Path
 
 # The shared success-chance ladder.  Index 0 is the easiest tier.
 # A successful roll moves one tier DOWN the list (harder next time),
@@ -56,6 +60,7 @@ class UnknownLevelError(ValueError):
 
 WEIGHTED = "weighted"
 TARGET = "target"
+SCORE = "score"
 
 
 @dataclass(frozen=True)
@@ -85,8 +90,9 @@ class Strategy:
     label: str = ""
 
     def __post_init__(self):
-        if self.kind not in (WEIGHTED, TARGET):
-            raise ValueError(f"kind must be {WEIGHTED!r} or {TARGET!r}, got {self.kind!r}")
+        if self.kind not in (WEIGHTED, TARGET, SCORE):
+            raise ValueError(f"kind must be {WEIGHTED!r}, {TARGET!r} or {SCORE!r}, "
+                             f"got {self.kind!r}")
         if self.kind == TARGET and (self.want_glory < 0 or self.allow_despair < 0):
             raise ValueError("targets cannot be negative")
 
@@ -100,6 +106,8 @@ class Strategy:
             return self.label
         if self.is_target:
             return f"target ({self.want_glory}, {self.allow_despair})"
+        if self.kind == SCORE:
+            return f"score ({self.w_glory:g} glory : {self.w_despair:g} despair)"
         return f"weighted (+{self.w_glory:g}%/-{self.w_despair:g}%)"
 
 
@@ -111,6 +119,19 @@ def weighted(w_glory: float = 5.0, w_despair: float = 2.0, label: str = "") -> S
 def target(want_glory: int, allow_despair: int, **kwargs) -> Strategy:
     """All or nothing: maximise P(>= want_glory glory AND <= allow_despair despair)."""
     return Strategy(kind=TARGET, want_glory=want_glory, allow_despair=allow_despair, **kwargs)
+
+
+def score(w_glory: float = 1.0, w_despair: float = 1.0, label: str = "") -> Strategy:
+    """Steer by an UNFLOORED score: w_glory per glory success plus w_despair
+    per despair slot left clean.
+
+    Unlike amplification it is never floored, so the solver still tells a 5/2
+    from a 1/5 however heavily despair is weighted - which is what makes it a
+    usable policy for "keep despair low" play.  It is never negative, so an
+    incomplete attempt (scored 0) stays the worst outcome rather than a
+    tempting escape from a bad board.
+    """
+    return Strategy(kind=SCORE, w_glory=w_glory, w_despair=w_despair, label=label)
 
 
 DEFAULT_STRATEGY = weighted()
@@ -222,6 +243,9 @@ class Inheritance:
     def __init__(self, cfg: Config):
         self.cfg = cfg
         self._memo: dict = {}
+        # chance() for every (action, tier), looked up millions of times a solve
+        self._p = {action: tuple(self.chance(action, tier) for tier in range(len(TIERS)))
+                   for action in ACTION_ORDER}
 
     # ---------------------------------------------------------------- rules
 
@@ -312,6 +336,9 @@ class Inheritance:
         """
         if self.cfg.is_target:
             return 1.0 if self.hits_target(glory_success, despair_success) else 0.0
+        if self.cfg.strategy.kind == SCORE:
+            return (self.cfg.w_glory * glory_success
+                    + self.cfg.w_despair * (self.cfg.slots - despair_success))
         return self.amplification(glory_success, despair_success)
 
     # ------------------------------------------------------------- solving
@@ -340,25 +367,48 @@ class Inheritance:
         the reported score.  Every action either takes a slot or spends mental
         strength, so potential() strictly decreases and the graph is acyclic.
         """
-        hit = self._memo.get(state)
+        memo = self._memo
+        hit = memo.get(state)
         if hit is not None:
             return hit
-        _gf, gs, df, ds, _ms, _sp, _t = state
-        if self.is_terminal(state):
+        gf, gs, df, ds, ms, sp, t = state
+        slots = self.cfg.slots
+        if gf == slots and df == slots:
             result = (1.0, self.objective(gs, ds), None)
-            self._memo[state] = result
+            memo[state] = result
             return result
 
-        legal = self.legal_actions(state)
+        # This is the hot loop of every solve, so transitions() and
+        # legal_actions() are inlined here - same children, same order, same
+        # arithmetic - and memo hits are looked up without a call.
+        harder = t + 1 if t < WORST_TIER else WORST_TIER
+        easier = t - 1 if t > BEST_TIER else BEST_TIER
         best = None
         for action in ACTION_ORDER:
-            if action not in legal:
-                continue
+            if action == GLORY:
+                if sp <= 0 or gf >= slots:
+                    continue
+                win = (gf + 1, gs + 1, df, ds, ms, sp - 1, harder)
+                lose = (gf + 1, gs, df, ds, ms, sp - 1, easier)
+            elif action == DESPAIR:
+                if sp <= 0 or df >= slots:
+                    continue
+                win = (gf, gs, df + 1, ds + 1, ms, sp - 1, harder)
+                lose = (gf, gs, df + 1, ds, ms, sp - 1, easier)
+            else:
+                if ms <= 0:
+                    continue
+                boosted = min(sp + 2, self.cfg.max_spirit)
+                win = (gf, gs, df, ds, ms - 1, boosted, harder)
+                lose = (gf, gs, df, ds, ms - 1, sp, easier)
+            p = self._p[action][t]
             p_finish = 0.0
             ev = 0.0
-            for prob, nxt, _ok in self.transitions(state, action):
+            for prob, nxt in ((p, win), (1 - p, lose)):
                 if prob:
-                    sub = self.value(nxt)
+                    sub = memo.get(nxt)
+                    if sub is None:
+                        sub = self.value(nxt)
                     p_finish += prob * sub[0]
                     ev += prob * sub[1]
             if best is None or self._better((p_finish, ev), best):
@@ -373,7 +423,7 @@ class Inheritance:
             result = (0.0, 0.0, DEAD_END)
         else:
             result = best
-        self._memo[state] = result
+        memo[state] = result
         return result
 
     def best_action(self, state: State):
@@ -480,6 +530,49 @@ class Inheritance:
                         log.append((state, action, succeeded, nxt))
                     state = nxt
                     break
+
+
+# An exact solve takes from a fraction of a second (level 1) to ~10s (level
+# 20), and the Monte Carlo tools ask for the same few dozen over and over, in
+# many processes.  So each finished Analysis is kept on disk, one file per
+# config, under a directory named for this file's source: edit the solver and
+# every stale answer is simply never looked at again.
+CACHE_DIR = Path(__file__).with_name(".solver_cache")
+_SOLVED: dict = {}
+_SOURCE_TAG = None
+
+
+def _cache_path(cfg: Config) -> Path:
+    global _SOURCE_TAG
+    if _SOURCE_TAG is None:
+        _SOURCE_TAG = hashlib.sha1(Path(__file__).read_bytes()).hexdigest()[:16]
+    name = hashlib.sha1(repr(cfg).encode()).hexdigest()
+    return CACHE_DIR / _SOURCE_TAG / f"{name}.pkl"
+
+
+def cached_analysis(cfg: Config) -> Analysis:
+    """Inheritance(cfg).analyse(), solved at most once per machine."""
+    hit = _SOLVED.get(cfg)
+    if hit is not None:
+        return hit
+    path = _cache_path(cfg)
+    try:
+        with open(path, "rb") as fh:
+            hit = pickle.load(fh)
+    except (OSError, EOFError, pickle.UnpicklingError, AttributeError, ValueError):
+        hit = None
+    if hit is None or hit.cfg != cfg:
+        hit = Inheritance(cfg).analyse()
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(f".{os.getpid()}.tmp")
+            with open(tmp, "wb") as fh:
+                pickle.dump(hit, fh)
+            os.replace(tmp, path)       # atomic: a parallel reader never sees half a file
+        except OSError:
+            pass                        # a read-only checkout still works, just slower
+    _SOLVED[cfg] = hit
+    return hit
 
 
 def simulate(level: int, rng=None, **kwargs) -> dict:

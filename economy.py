@@ -32,7 +32,7 @@ import bisect
 import math
 import random
 
-from relic import Inheritance, config_for_level, weighted
+from relic import Inheritance, cached_analysis, config_for_level, weighted
 
 DIAMONDS_PER_SUMMON = 5000
 RELICS_PER_SUMMON = 11
@@ -80,39 +80,61 @@ def run(level: int = 20, sims: int = 5000, seed: int = 20260922, marks=None):
     total at the moment each mark is first met is recorded.
     """
     solver = Inheritance(config_for_level(level, strategy=weighted()))
-    analysis = solver.analyse()
+    analysis = cached_analysis(solver.cfg)
     values, amp_cum = amplification_cdf(solver, analysis)
     scum = summon_cdf()
 
     thresholds = [v for v in values if v > 0] if marks is None else sorted(marks)
-    top = thresholds[-1]
     rng = random.Random(seed)
     # costs[i] collects, across runs, the diamonds spent to first reach thresholds[i]
     costs = [[] for _ in thresholds]
     attempts_at = [[] for _ in thresholds]
 
+    # The top marks take thousands of attempts, but only the few that set a new
+    # best matter, so a run jumps from one record to the next - an exact
+    # rewrite of "summon, attempt, keep the best", not an approximation:
+    #   - attempts until the next record are Geometric(P(amp > best))
+    #   - the record itself is amp drawn conditional on beating best
+    #   - the summons behind attempt A are the first n whose crit drops reach
+    #     10A (each attempt only summons when short, and leftovers carry), and
+    #     n summons can be skipped in one Binomial(11n, 1/12) draw whenever
+    #     even 11 crits a summon could not get there
     rand = rng.random
+    binomial = rng.binomialvariate
     bis = bisect.bisect
+    p_crit = 1.0 / RELIC_TYPES
+    last = len(values) - 1
     for _ in range(sims):
-        crit = summons = attempts = 0
-        best = 0.0
+        drawn = summons = attempts = 0
+        best_cum = 0.0          # P(amp <= best so far); best starts at the 0% floor
+        k = bisect.bisect_right(values, 0.0)
+        if k:
+            best_cum = amp_cum[k - 1]
         index = 0
         while index < len(thresholds):
-            while crit < RELICS_PER_ATTEMPT:
-                crit += bis(scum, rand())
-                summons += 1
-            crit -= RELICS_PER_ATTEMPT
-            attempts += 1
-            amp = values[bis(amp_cum, rand())]
-            if amp > best:
-                best = amp
-                spent = summons * DIAMONDS_PER_SUMMON
-                while index < len(thresholds) and thresholds[index] <= best:
-                    costs[index].append(spent)
-                    attempts_at[index].append(attempts)
-                    index += 1
-            if best >= top and index >= len(thresholds):
-                break
+            beat = 1.0 - best_cum
+            if beat >= 1.0:
+                attempts += 1
+            else:
+                attempts += 1 + int(math.log(1.0 - rand()) / math.log1p(-beat))
+            pick = min(bis(amp_cum, best_cum + rand() * beat), last)
+            best, best_cum = values[pick], amp_cum[pick]
+
+            need = RELICS_PER_ATTEMPT * attempts
+            while drawn < need:
+                n = (need - drawn - 1) // RELICS_PER_SUMMON
+                if n:
+                    drawn += binomial(RELICS_PER_SUMMON * n, p_crit)
+                    summons += n
+                else:
+                    drawn += bis(scum, rand())
+                    summons += 1
+
+            spent = summons * DIAMONDS_PER_SUMMON
+            while index < len(thresholds) and thresholds[index] <= best:
+                costs[index].append(spent)
+                attempts_at[index].append(attempts)
+                index += 1
 
     rows = []
     for i, mark in enumerate(thresholds):
