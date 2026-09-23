@@ -1,0 +1,18 @@
+[package]
+name = "relic"
+version = "0.1.0"
+edition = "2024"
+description = "Slayer Legend relic inheritance: exact solver, diamond costs, and inheritor levelling"
+
+[[bin]]
+name = "relic"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+rayon = "1.12"
+rustc-hash = "2"
+
+[profile.release]
+lto = true
+codegen-units = 1

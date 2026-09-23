@@ -1,0 +1,25 @@
+Inheritor level 7: hand-written rules vs the exact optimum
+                       policy |  E[glory]  E[desp succ]    E[amp]   P(wipe) | vs optimal
+       OPTIMAL (lookup table) |    4.2309        2.1719   16.811%   2.0226% |          -
+   glory bar first (baseline) |    3.7900        2.5997   13.752%   2.8573% |    -3.059%
+                   tier split |    3.9403        2.1915   15.321%   7.2027% |    -1.491%
+            tier split + fuel |    3.9873        2.2490   15.444%   2.7516% |    -1.367%
+   old rule (tuned @ level 1) |    4.0199        2.1275   15.846%   3.9976% |    -0.965%
+  FULL RULE (tuned @ level 7) |    4.1015        2.2931   15.924%   0.9429% |    -0.887%
+
+  where the fuel clause is gated (the rest of the rule held fixed)
+   mental training at |    E[amp]   P(wipe)
+                never |   15.923%   3.5835%
+        80% or better |   15.336%   2.9975%
+        65% or better |   15.296%   1.6442%
+        50% or better |   15.924%   0.9429%  <== default
+        35% or better |   15.860%   1.3831%
+             any rate |   15.810%   1.6029%
+
+  where the glory/despair split sits (despair takes everything below)
+  attempt glory up to |    E[amp]   P(wipe)
+                 80% |   13.717%   0.9385%
+                 65% |   15.924%   0.9429%  <== default
+                 50% |   15.277%   0.9485%
+                 35% |   13.531%   0.9396%
+                 20% |   13.001%   0.9309%

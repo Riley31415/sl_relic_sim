@@ -1,0 +1,69 @@
+Inheritor level 1
+  memory slots per bar : 5
+  max spirit power     : 8  (spirit power starts here)
+  starting mental str. : 5
+  glory rate modifier  : +0%
+  despair rate modifier: +0%
+  chance ladder        : 80%  65%  50%  35%  20%   (starts at 80%)
+  strategy             : weighted (+5%/-2%)
+  objective            : maximise amplification (+5% per glory success, -2% per despair success)
+  spirit power needed  : 10 to complete both bars, 8 on hand -> at least 1 successful mental training (worth full value at 6 spirit power or below)
+
+OPTIMAL PLAY  (exact expectimax, 49,041 states)
+  expected glory successes : 3.4587 / 5   (69.17% of the bar, higher is better)
+  expected despair success : 2.0910 / 5   (41.82% of the bar, LOWER is better)
+  expected amplification   :  13.120% of a possible 25%
+  P(dead-end wipe)         : 0.3616%
+  expected actions taken   : 14.53  (attempt glory 5.00, attempt despair 4.99, mental training 4.54 of 5)
+
+OUTCOME DISTRIBUTION  (glory successes: want high. despair successes: want low)
+  count |  glory successes |  despair succ.
+      0 |            0.39% |          2.57%  
+      1 |            1.00% |         20.83%  
+      2 |           10.40% |         45.70%  ####
+      3 |           38.17% |         26.85%  ###############
+      4 |           40.60% |          3.91%  ################
+      5 |            9.43% |          0.14%  ####
+  (bars show the glory marginal)
+
+  joint table, rows = glory successes, cols = despair successes
+                0        1        2        3        4        5
+  g=0      0.36%    0.00%    0.01%    0.02%    0.01%    0.00%
+  g=1      0.01%    0.11%    0.43%    0.38%    0.07%    0.00%
+  g=2      0.08%    1.39%    4.66%    3.63%    0.62%    0.02%
+  g=3      0.52%    6.67%   17.63%   11.54%    1.76%    0.06%
+  g=4      1.07%    9.52%   18.80%    9.85%    1.32%    0.05%
+  g=5      0.53%    3.14%    4.19%    1.44%    0.12%    0.00%
+
+POLICY: what optimal play actually does
+
+  share of decisions by chance tier (probability weighted)
+    tier |  attempt glory  attempt despair  mental training |   weight
+     80% |          75.3%             9.3%            15.4% |    2.934
+     65% |          57.1%             9.3%            33.6% |    4.083
+     50% |           7.2%            36.9%            55.9% |    4.037
+     35% |           3.4%            84.4%            12.2% |    2.507
+     20% |           8.6%            75.4%            15.9% |    0.973
+
+  dominant choice by tier x spirit power  (G attempt glory / D attempt despair / T mental training)
+  lowercase = the choice is mixed, it depends on how full the bars are
+           spirit power
+            0   1   2   3   4   5   6   7   8
+     80%    T   d   t   t   g   g   g   g   G
+     65%    T   t   t   t   t   g   g   g   d
+     50%    T   t   t   t   t   t   t   t   D
+     35%    T   t   d   d   d   d   d   d   d
+     20%    .   d   d   d   d   d   d   d   g
+
+  opening move, expected score of each option from the start state
+    attempt glory    13.1197  <== optimal
+    attempt despair  11.4757
+    mental training  11.8914
+
+SAFETY TRADE-OFF: cost of dodging the dead-end wipe
+         objective |  E[glory]  E[desp succ]    E[amp]   P(wipe)
+    wipe penalty 0 |    3.4587        2.0910   13.120%   0.3616%
+    wipe penalty 3 |    3.4587        2.0909   13.120%   0.3616%
+   wipe penalty 10 |    3.4583        2.0936   13.112%   0.2498%
+   wipe penalty 30 |    3.4580        2.0941   13.110%   0.2356%
+    min wipe first |    3.3407        2.1183   12.481%   0.0839%
