@@ -2,7 +2,8 @@
 //! amplification mark - and COST.md, generated from it.
 //!
 //! 5000 diamonds buys 11 random relics over 12 types; only type 1 (crit) is
-//! wanted, and an attempt burns 10 of them.  Each attempt re-rolls the relic
+//! wanted, and an attempt burns 10 of them.  The other 11 types are converted
+//! into crit relics, 10 of one type for 7.  Each attempt re-rolls the relic
 //! and the best result ever hit is kept, so the question is how many attempts
 //! (and so diamonds) before the best reaches 20%, 30%, 45%, 50%.
 //!
@@ -22,60 +23,68 @@ pub const RELICS_PER_SUMMON: u32 = 11;
 pub const RELIC_TYPES: u32 = 12;
 /// crit relics burned by one inheritance attempt
 pub const RELICS_PER_ATTEMPT: u32 = 10;
+/// relics of one other type traded in for one conversion ...
+pub const CONVERT_FROM: u32 = 10;
+/// ... and the crit relics it gives back
+pub const CONVERT_TO: u32 = 7;
 
-/// Long-run diamonds per attempt, once leftover crit relics carry over.
+/// Crit relics a summon yields in the long run: the crits it drops plus the
+/// others converted at 10 for 7.  Per-type piles only change the rounding.
+pub fn crits_per_summon() -> f64 {
+    let crits = f64::from(RELICS_PER_SUMMON) / f64::from(RELIC_TYPES);
+    let others = f64::from(RELICS_PER_SUMMON) - crits;
+    crits + others * f64::from(CONVERT_TO) / f64::from(CONVERT_FROM)
+}
+
+/// Long-run diamonds per attempt, once leftover relics carry over.
 pub fn diamonds_per_attempt() -> f64 {
-    let crits_per_summon = f64::from(RELICS_PER_SUMMON) / f64::from(RELIC_TYPES);
-    f64::from(RELICS_PER_ATTEMPT) / crits_per_summon * DIAMONDS_PER_SUMMON as f64
+    f64::from(RELICS_PER_ATTEMPT) / crits_per_summon() * DIAMONDS_PER_SUMMON as f64
 }
 
-/// Cumulative distribution of crit relics from `summons` summons at once:
-/// Binomial(11 x summons, 1/12).
-pub fn summon_cdf(summons: u32) -> Vec<f64> {
-    let n = RELICS_PER_SUMMON * summons;
-    let p = 1.0 / f64::from(RELIC_TYPES);
-    let mut pmf = (1.0 - p).powi(n as i32);
-    let mut running = 0.0;
-    let mut cum = Vec::with_capacity(n as usize + 1);
-    for k in 0..=n {
-        running += pmf;
-        cum.push(running);
-        pmf *= f64::from(n - k) / f64::from(k + 1) * p / (1.0 - p);
-    }
-    *cum.last_mut().expect("at least one outcome") = 1.0;
-    cum
+/// Relics summoned so far.  Each other type is converted as soon as ten of
+/// it are on hand, so up to 9 of every type can sit waiting.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Stock {
+    pub crits: u32,
+    /// the 11 other types, unconverted
+    pub others: [u32; (RELIC_TYPES - 1) as usize],
+    /// crit relics from conversions so far
+    pub converted: u32,
 }
 
-/// Crit relics from a batch of summons, drawn exactly.  Big batches let a run
-/// skip over thousands of summons in a few draws.
-struct Summoner {
-    batches: Vec<(u32, Vec<f64>)>,
-}
-
-impl Summoner {
-    fn new() -> Self {
-        Summoner { batches: [64, 8, 1].into_iter().map(|size| (size, summon_cdf(size))).collect() }
-    }
-
-    /// Summon until at least `need` crit relics have been drawn in total.
-    /// Returns the summons that took; `drawn` carries the running total.
-    fn until(&self, drawn: &mut u32, need: u32, rng: &mut Rng) -> u64 {
-        let mut summons = 0;
-        while *drawn < need {
-            // the biggest batch that cannot overshoot: even 11 crits a summon
-            // would stay short of `need`, so no first-reach is skipped
-            let gap = need - *drawn;
-            let (size, cdf) = self
-                .batches
-                .iter()
-                .find(|(size, _)| RELICS_PER_SUMMON * size < gap)
-                .unwrap_or(self.batches.last().expect("the single-summon batch"));
-            let r = rng.unit();
-            *drawn += cdf.partition_point(|&c| c <= r) as u32;
-            summons += u64::from(*size);
+impl Stock {
+    /// Add one relic of `kind` (0 is crit), converting a pile the moment it
+    /// reaches ten.
+    pub fn add(&mut self, kind: usize) {
+        if kind == 0 {
+            self.crits += 1;
+            return;
         }
-        summons
+        let pile = &mut self.others[kind - 1];
+        *pile += 1;
+        if *pile == CONVERT_FROM {
+            *pile = 0;
+            self.converted += CONVERT_TO;
+        }
     }
+
+    /// Crit relics available so far, dropped and converted.
+    pub fn crit_supply(&self) -> u32 {
+        self.crits + self.converted
+    }
+}
+
+/// Summon until the crit supply reaches `need` in total, drawing every
+/// relic's type.  Returns the summons that took; `stock` carries the relics.
+pub fn summon_until(stock: &mut Stock, need: u32, rng: &mut Rng) -> u64 {
+    let mut summons = 0;
+    while stock.crit_supply() < need {
+        for _ in 0..RELICS_PER_SUMMON {
+            stock.add(rng.below(RELIC_TYPES as usize));
+        }
+        summons += 1;
+    }
+    summons
 }
 
 /// Distinct amplifications and their cumulative probability, ascending.
@@ -124,13 +133,13 @@ pub struct Farm {
 /// record to the next - an exact rewrite of "summon, attempt, keep the best":
 /// the attempts to the next record are Geometric(P(amp > best)), the record is
 /// drawn conditional on beating the best, and the summons behind attempt A are
-/// the first n whose crit drops reach 10A (leftovers carry).
+/// the first n whose crit supply - drops plus conversions - reaches 10A
+/// (leftovers carry).
 pub fn farm(level: i64, sims: usize, seed: u64) -> Result<Farm, String> {
     let mut solver = Solver::new(Config::for_level(level, Strategy::default())?);
     let analysis = solver.analyse(None);
     let (values, amp_cum) = amplification_cdf(&solver, &analysis);
     let thresholds: Vec<f64> = values.iter().copied().filter(|&v| v > 0.0).collect();
-    let summoner = Summoner::new();
     let last = values.len() - 1;
     // P(amp <= best) for the 0% floor every run starts at
     let floor_cum = match values.partition_point(|&v| v <= 0.0) {
@@ -142,7 +151,7 @@ pub fn farm(level: i64, sims: usize, seed: u64) -> Result<Farm, String> {
     let mut attempts_at: Vec<Vec<f64>> = vec![Vec::with_capacity(sims); thresholds.len()];
     for run in 0..sims {
         let mut rng = Rng::for_run(seed, run as u64);
-        let (mut drawn, mut summons, mut attempts) = (0u32, 0u64, 0u64);
+        let (mut stock, mut summons, mut attempts) = (Stock::default(), 0u64, 0u64);
         let mut best_cum = floor_cum;
         let mut index = 0;
         while index < thresholds.len() {
@@ -152,7 +161,7 @@ pub fn farm(level: i64, sims: usize, seed: u64) -> Result<Farm, String> {
             let pick = amp_cum.partition_point(|&c| c <= target).min(last);
             let best = values[pick];
             best_cum = amp_cum[pick];
-            summons += summoner.until(&mut drawn, RELICS_PER_ATTEMPT * attempts as u32, &mut rng);
+            summons += summon_until(&mut stock, RELICS_PER_ATTEMPT * attempts as u32, &mut rng);
             let spent = (summons * DIAMONDS_PER_SUMMON) as f64;
             while index < thresholds.len() && thresholds[index] <= best {
                 costs[index].push(spent);
@@ -232,8 +241,12 @@ pub fn report(farm: &Farm, sims: usize, step: u32, min_mark: Option<f64>) -> Str
     );
     let _ = writeln!(
         out,
+        "  the other relics convert to crit relics, {CONVERT_FROM} of one type for {CONVERT_TO}"
+    );
+    let _ = writeln!(
+        out,
         "  -> {:.4} crit relics per summon, about {} diamonds per attempt",
-        f64::from(RELICS_PER_SUMMON) / f64::from(RELIC_TYPES),
+        crits_per_summon(),
         commas(diamonds_per_attempt(), 0)
     );
     let _ = writeln!(
@@ -414,6 +427,8 @@ pub fn markdown(farm: &Farm, sims: usize) -> Result<String, String> {
     let top = &rows[rows.len() - 1];
     let (m25, m30, m35, m40, m45) = (at(25.0)?, at(30.0)?, at(35.0)?, at(40.0)?, at(45.0)?);
     let dpa = diamonds_per_attempt();
+    let raw_dpa = f64::from(RELICS_PER_ATTEMPT * RELIC_TYPES) / f64::from(RELICS_PER_SUMMON)
+        * DIAMONDS_PER_SUMMON as f64;
     let h = human;
 
     let mut table = vec![
@@ -455,9 +470,21 @@ relic cost --min-mark 0      # include the cheap marks below 35% too
 |---|---|
 | 1 summon | {summon} diamonds, {RELICS_PER_SUMMON} random relics |
 | relic types | {RELIC_TYPES}, of which type 1 (crit) is the one we want |
-| crit relics per summon | Binomial({RELICS_PER_SUMMON}, 1/{RELIC_TYPES}) = **{per_summon:.4}** on average |
+| crit relics dropped per summon | Binomial({RELICS_PER_SUMMON}, 1/{RELIC_TYPES}) = {drop_per_summon:.4} on average |
+| conversion | {CONVERT_FROM} relics of one other type -> {CONVERT_TO} crit relics |
+| other relics per summon | {others_per_summon:.4}, worth {converted:.4} crit relics |
+| crit relics per summon | **{per_summon:.4}** in the long run, conversions included |
 | 1 inheritance attempt | {RELICS_PER_ATTEMPT} crit relics |
 | **so 1 attempt costs** | **about {dpa_s} diamonds** once leftovers carry over |
+
+Conversion does most of the work: the other types are {others} in {RELIC_TYPES} of every
+summon, so they supply {convert_share} of the crit relics. Without it an attempt
+would cost {dpa_raw} diamonds, {raw_ratio:.1}x as much.
+
+A conversion needs {CONVERT_FROM} of the **same** type, so the others build up in
+{others} separate piles and up to 9 of each can sit waiting. That costs nothing in the
+long run but makes the first few attempts dearer: early on, most of what has been
+summoned is still stuck in part-filled piles.
 
 Each attempt re-rolls the relic and you keep the best result you have ever hit,
 so reaching a mark is a matter of attempting until one lands. That makes the
@@ -473,8 +500,9 @@ The diamond total at the moment each mark is first met is recorded, then average
 The per-attempt outcome is drawn from the solver's **exact** outcome
 distribution rather than by replaying the policy move by move. The solver
 enumerates every branch, so those are the same distribution - a speedup, not an
-approximation. The summon side is simulated properly, so the leftover crit relics
-that carry between attempts are handled exactly.
+approximation. The summon side is simulated relic by relic: every relic's
+type is drawn, each type's pile is converted the moment it reaches {CONVERT_FROM},
+and the crits and part-filled piles carry between attempts exactly.
 
 ## Cost by mark
 
@@ -493,7 +521,9 @@ renderer that keeps inline SVG; the VS Code preview does, GitHub strips it.</sub
 
 ## What this says
 
-**Everything below 35% is close to free**, which is why the table starts there.
+**Everything below 35% costs about the entry fee** - the summons behind the first
+attempt or two, most of them still sitting in part-filled piles - which is why the
+table starts there.
 25% costs {m25_mean} and lands first try
 {p25} of the time; 30% costs
 {m30_mean}. The real spending starts above that.
@@ -543,10 +573,11 @@ attempts against a predicted 1 / {top_p6} = {predicted}.
 1. A summon is {RELICS_PER_SUMMON} **independent** relics, each equally
    likely to be any of the {RELIC_TYPES} types. No pity, no duplicate
    protection, no banner weighting.
-2. Only crit relics have any value; the other {others} types are
-   discarded. If they are worth something, the true cost per crit relic is lower.
-3. Leftover crit relics carry over between attempts, so nothing is wasted except
-   within the final partial summon.
+2. The other {others} types are only worth their conversion: {CONVERT_FROM} of
+   one type for {CONVERT_TO} crit relics. Each type is converted as soon as
+   {CONVERT_FROM} of it are on hand and is never kept for anything else.
+3. Leftover crits and part-filled piles carry over between attempts, so nothing
+   is wasted except within the final partial summon and the unfilled piles.
 4. Attempts are independent and the relic keeps its best amplification ever
    rolled - an attempt can never make an existing relic worse.
 5. The inheritance itself is played to the solver's optimal weighted policy
@@ -554,7 +585,15 @@ attempts against a predicted 1 / {top_p6} = {predicted}.
    policy costs more diamonds for the same mark.
 "#,
         summon = commas(DIAMONDS_PER_SUMMON as f64, 0),
-        per_summon = f64::from(RELICS_PER_SUMMON) / f64::from(RELIC_TYPES),
+        drop_per_summon = f64::from(RELICS_PER_SUMMON) / f64::from(RELIC_TYPES),
+        others_per_summon =
+            f64::from(RELICS_PER_SUMMON) * f64::from(RELIC_TYPES - 1) / f64::from(RELIC_TYPES),
+        converted = crits_per_summon() - f64::from(RELICS_PER_SUMMON) / f64::from(RELIC_TYPES),
+        per_summon = crits_per_summon(),
+        convert_share =
+            pct(1.0 - f64::from(RELICS_PER_SUMMON) / f64::from(RELIC_TYPES) / crits_per_summon(), 0),
+        dpa_raw = commas(raw_dpa, 0),
+        raw_ratio = raw_dpa / dpa,
         dpa_s = commas(dpa, 0),
         sims_s = commas(sims as f64, 0),
         top_mark = top.mark,
@@ -591,45 +630,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_summon_tables_are_distributions() {
-        for size in [1, 8, 64] {
-            let cum = summon_cdf(size);
-            assert!((cum[cum.len() - 1] - 1.0).abs() < 1e-12);
-            let mean: f64 = pmf(&cum).iter().enumerate().map(|(k, p)| k as f64 * p).sum();
-            let expect = f64::from(RELICS_PER_SUMMON * size) / f64::from(RELIC_TYPES);
-            assert!((mean - expect).abs() < 1e-9, "batch of {size}");
-        }
-    }
-
-    #[test]
-    fn batched_summons_match_one_at_a_time() {
-        // the same first-passage count, drawn two ways
-        let summoner = Summoner::new();
-        let single = &summoner.batches[2].1;
-        let (mut batched, mut stepped) = (0.0, 0.0);
-        let runs = 20_000;
-        for run in 0..runs {
-            let mut rng = Rng::for_run(3, run);
-            let mut drawn = 0;
-            batched += summoner.until(&mut drawn, 2000, &mut rng) as f64;
-            let mut rng = Rng::for_run(4, run);
-            let (mut drawn, mut summons) = (0u32, 0u64);
-            while drawn < 2000 {
-                let r = rng.unit();
-                drawn += single.partition_point(|&c| c <= r) as u32;
-                summons += 1;
-            }
-            stepped += summons as f64;
-        }
-        let (b, s) = (batched / runs as f64, stepped / runs as f64);
-        assert!((b / s - 1.0).abs() < 0.003, "{b} vs {s}");
+    fn summoning_settles_to_the_long_run_rate() {
+        // the piles strand at most 9 of each of the 11 other types, so the
+        // summons to 2000 crits sit just above the long-run count
+        let runs = 5_000;
+        let mean = (0..runs)
+            .map(|run| summon_until(&mut Stock::default(), 2000, &mut Rng::for_run(3, run)) as f64)
+            .sum::<f64>()
+            / runs as f64;
+        let long_run = 2000.0 / crits_per_summon();
+        assert!(mean > long_run && mean < long_run + 12.0, "{mean} vs {long_run}");
     }
 
     #[test]
     fn record_jumping_is_exact() {
         // every mark's attempts must be Geometric(P(amp >= mark)), mean 1/p,
         // and cost ~ attempts x diamonds per attempt; the top mark at level 4
-        // is a 0.3% shot, the hardest case for the jump
+        // is a 0.3% shot, the hardest case for the jump.  A summon is ~8
+        // crits' worth against 10 an attempt, so the per-attempt price only
+        // settles to its long-run value over many attempts
         let farm = farm(4, 20_000, 5).unwrap();
         for row in [&farm.rows[farm.rows.len() - 1], &farm.rows[farm.rows.len() / 2]] {
             let expect = 1.0 / row.p_attempt;
@@ -639,6 +658,9 @@ mod tests {
                 row.mark,
                 row.mean_attempts
             );
+            if expect < 50.0 {
+                continue;
+            }
             let cost = expect * diamonds_per_attempt();
             assert!((row.mean / cost - 1.0).abs() < 0.04, "{}%: {} vs {cost}", row.mark, row.mean);
         }

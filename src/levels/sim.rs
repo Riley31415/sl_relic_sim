@@ -2,6 +2,7 @@
 //! against the board as it stands, so a lucky or unlucky roll changes what
 //! happens next.
 
+use super::amplification;
 use super::rules::{Bar, LevelRules, Quest, Relic, contains, totals};
 use super::tables::{LocalTables, Table, TableKey};
 use crate::rng::Rng;
@@ -12,6 +13,10 @@ pub struct Economy {
     pub per_summon: usize,
     pub per_attempt: u32,
     pub diamonds_per_summon: u64,
+    /// relics of one type traded in for `convert_to` crit relics, once the
+    /// climb is over
+    pub convert_from: u32,
+    pub convert_to: u32,
 }
 
 /// Everything fixed about the game, indexed by level.
@@ -32,6 +37,11 @@ pub struct RunOptions {
     /// relics of each type on hand before the first summon
     pub start_stock: Vec<u32>,
     pub pity: bool,
+    /// crit relic amplification marks (percent), each farmed separately from
+    /// the player at `max_level`, every other relic converted into crit relics;
+    /// on reaching `max_level` the leftover relics are first spent on the crit
+    /// relic, played for the first mark
+    pub tiers: Vec<u8>,
 }
 
 /// The state at one level-up.
@@ -59,6 +69,7 @@ pub struct Run {
 /// Stop a malformed requirement table from looping forever.
 const MAX_ESCALATIONS: u32 = 400;
 
+#[derive(Clone)]
 struct Player<'a> {
     economy: &'a Economy,
     states: Vec<Relic>,
@@ -86,6 +97,16 @@ impl Player<'_> {
         self.stock[relic] -= self.economy.per_attempt;
         self.attempts += 1;
         table.sample(self.rng.unit())
+    }
+
+    /// Trade every full ten of each other type for crit relics.
+    fn convert(&mut self, crit: usize) {
+        let (from, to) = (self.economy.convert_from, self.economy.convert_to);
+        for relic in (0..self.stock.len()).filter(|&i| i != crit) {
+            let lots = self.stock[relic] / from;
+            self.stock[relic] -= lots * from;
+            self.stock[crit] += lots * to;
+        }
     }
 
     /// Of `candidates`, the relic we hold the most of (first on a tie).
@@ -209,6 +230,42 @@ pub fn run(
             player.states[pick] = if take { rolled } else { old };
         }
         levels.push(player.level_up(!quest.satisfied(&player.states), tracked.0, tracked.1));
+    }
+
+    // a run that goes on to the tiers first spends what the climb left over:
+    // everything converted into crit relics and attempted for the first tier,
+    // without summoning more
+    let crit = tracked.1;
+    if let (Some(&first), Some(top)) = (options.tiers.first(), levels.last_mut()) {
+        let key = TableKey::Reach { level: options.max_level as u8, mark: first };
+        player.convert(crit);
+        while player.affordable(crit) {
+            let rolled = player.attempt(crit, tables.get(key));
+            if amplification(rolled) > amplification(player.states[crit]) {
+                player.states[crit] = rolled;
+            }
+        }
+        *top = player.level_up(top.by_pity, tracked.0, tracked.1);
+    }
+
+    // the tiers: each its own farm from the same top-level player, everything
+    // converted into the crit relic and every attempt played for that tier's
+    // mark, the best result kept
+    for &mark in &options.tiers {
+        let key = TableKey::Reach { level: options.max_level as u8, mark };
+        let mut farm = player.clone();
+        while amplification(farm.states[crit]) < f64::from(mark) {
+            farm.convert(crit);
+            if !farm.affordable(crit) {
+                farm.summon();
+                continue;
+            }
+            let rolled = farm.attempt(crit, tables.get(key));
+            if amplification(rolled) > amplification(farm.states[crit]) {
+                farm.states[crit] = rolled;
+            }
+        }
+        levels.push(farm.level_up(false, tracked.0, tracked.1));
     }
     Ok(Run { levels, board: player.states })
 }

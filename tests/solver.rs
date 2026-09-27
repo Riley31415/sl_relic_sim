@@ -63,8 +63,14 @@ fn cumulative_bonuses() {
         (10, 7, 10, 0.06, -0.04),
         (11, 7, 10, 0.06, -0.06),
         (12, 8, 10, 0.06, -0.06),
-        (13, 8, 11, 0.06, -0.06),
-        (20, 10, 12, 0.10, -0.10),
+        (13, 8, 10, 0.08, -0.06),
+        (14, 8, 10, 0.08, -0.08),
+        (15, 8, 10, 0.08, -0.08),
+        (16, 9, 10, 0.08, -0.08),
+        (17, 9, 10, 0.10, -0.08),
+        (18, 9, 10, 0.10, -0.10),
+        (19, 9, 10, 0.10, -0.10),
+        (20, 10, 10, 0.10, -0.10),
     ];
     for (lvl, slots, sp, gm, dm) in expected {
         let cfg = level(lvl);
@@ -75,12 +81,38 @@ fn cumulative_bonuses() {
 }
 
 #[test]
-fn high_levels_keep_cycling() {
-    // four levels add exactly one slot, one spirit power, +2% and -2%
-    for lvl in [2, 5, 9, 13, 17] {
+fn level_15_and_19_start_the_bars_partly_filled() {
+    assert_eq!((level(14).start_glory, level(14).start_despair_fail), (0, 0));
+    assert_eq!((level(15).start_glory, level(15).start_despair_fail), (1, 0));
+    assert_eq!((level(18).start_glory, level(18).start_despair_fail), (1, 0));
+    assert_eq!((level(19).start_glory, level(19).start_despair_fail), (1, 1));
+    assert_eq!((level(20).start_glory, level(20).start_despair_fail), (1, 1));
+    let start = Solver::new(level(19)).start_state();
+    assert_eq!((start.gf, start.gs, start.df, start.ds), (1, 1, 1, 0));
+    // a head start only ever helps
+    let (before, after) = (Solver::new(level(14)).analyse(None), Solver::new(level(15)).analyse(None));
+    assert!(after.e_amplification > before.e_amplification);
+    assert!(after.e_glory >= 1.0);
+    let (before, after) = (Solver::new(level(18)).analyse(None), Solver::new(level(19)).analyse(None));
+    assert!(after.e_despair_success < before.e_despair_success);
+    assert!(after.p_dead_end < before.p_dead_end);
+}
+
+#[test]
+fn the_bonuses_cycle_every_four_levels() {
+    // to level 12, four levels add one slot, one spirit power, +2% and -2%
+    for lvl in [2, 5, 8] {
         let (low, high) = (level(lvl), level(lvl + 4));
         assert_eq!(high.slots, low.slots + 1, "level {lvl}+4");
         assert_eq!(high.max_spirit, low.max_spirit + 1, "level {lvl}+4");
+        assert!(close(high.glory_mod, low.glory_mod + 0.02, 1e-12));
+        assert!(close(high.despair_mod, low.despair_mod - 0.02, 1e-12));
+    }
+    // from 13 the spirit power step is gone: one slot, +2% and -2%
+    for lvl in [12, 13, 16, 17, 20] {
+        let (low, high) = (level(lvl), level(lvl + 4));
+        assert_eq!(high.slots, low.slots + 1, "level {lvl}+4");
+        assert_eq!(high.max_spirit, low.max_spirit, "level {lvl}+4");
         assert!(close(high.glory_mod, low.glory_mod + 0.02, 1e-12));
         assert!(close(high.despair_mod, low.despair_mod - 0.02, 1e-12));
     }
@@ -404,5 +436,23 @@ fn the_wipe_chance_is_never_zero_when_training_is_required() {
     for lvl in [1, 4, 8] {
         let a = Solver::new(Config { safety_first: true, ..level(lvl) }).analyse(None);
         assert!(a.p_dead_end > 0.0, "level {lvl}");
+    }
+}
+
+#[test]
+fn reaching_a_mark_is_all_or_nothing_on_amplification() {
+    // P(amplification >= mark) from an attempt's outcome distribution
+    let p_reach = |strategy: Strategy, mark: f64| {
+        let mut solver = Solver::new(Config::for_level(20, strategy).unwrap());
+        let a = solver.analyse(None);
+        a.dist.iter().filter(|&((g, d), _)| solver.amplification(g, d) >= mark).map(|(_, p)| p).sum::<f64>()
+    };
+    // 50% is a full glory bar with no despair: the same box as target (10, 0)
+    assert!(close(p_reach(Strategy::reach(50), 50.0), p_reach(Strategy::target(10, 0), 50.0), 1e-12));
+    // playing for a mark beats playing for amplification at that mark
+    for mark in [42, 45, 48] {
+        let (reach, weighted) =
+            (p_reach(Strategy::reach(mark), f64::from(mark)), p_reach(Strategy::default(), f64::from(mark)));
+        assert!(reach >= weighted - 1e-12, "{mark}%: {reach} vs {weighted}");
     }
 }

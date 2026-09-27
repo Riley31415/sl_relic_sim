@@ -15,7 +15,7 @@ use clap::{Args, Parser, Subcommand};
 
 use relic::format::{commas, human};
 use relic::levels::report::{self, HABITS};
-use relic::levels::{self, Game, Plan, RunOptions, SearchOptions};
+use relic::levels::{self, Game, Plan, RunOptions, SearchOptions, Target};
 use relic::solve_report::SolveArgs;
 use relic::solver::DOCUMENTED_MAX_LEVEL;
 use relic::{economy, heuristics, solve_report};
@@ -154,6 +154,14 @@ struct Levels {
     /// search for the cheapest plan to --max-level overall (starts from greedy)
     #[arg(long)]
     lookahead: bool,
+    /// search a look-ahead plan for every target (each level, then each crit
+    /// relic tier) and write them to PATH
+    #[arg(long, value_name = "PATH")]
+    lookahead_all: Option<String>,
+    /// with --lookahead-all: search only these targets (e.g. 12 20+50); by
+    /// default every target PATH does not have yet
+    #[arg(long, num_args = 1..)]
+    only: Vec<String>,
 }
 
 fn solve(a: Solve) -> Result<String, String> {
@@ -201,6 +209,9 @@ fn levels(a: Levels) -> Result<String, String> {
             .map_err(|e| format!("{path}: {e}"))?;
         return Ok(format!("wrote {path}\n"));
     }
+    if let Some(path) = &a.lookahead_all {
+        return lookahead_all(game, path, &a.only);
+    }
     let runs = a.runs.unwrap_or(2000);
     if a.greedy || a.lookahead {
         return search(game, &a);
@@ -209,10 +220,12 @@ fn levels(a: Levels) -> Result<String, String> {
         return report::compare(game, runs, a.seed, a.max_level);
     }
     let plan = levels::strategy(&a.strategy).ok_or(format!("no plan called '{}'", a.strategy))?;
-    let options = RunOptions::to(a.max_level).with_stock(a.start_stock);
+    // a plan's crit relic tiers only follow a climb to the top
+    let tiers = if a.max_level == levels::MAX_LEVEL { levels::tiers(&a.strategy) } else { &[] };
+    let options = RunOptions::to(a.max_level).with_stock(a.start_stock).with_tiers(tiers);
     let rows = report::level_rows(game, &plan, runs, a.seed, &options)?;
     if a.chart {
-        return Ok(report::chart_svg(&rows, "Cost to raise the inheritor", true) + "\n");
+        return Ok(report::cost_chart_svg(&rows, "Cost to raise the inheritor") + "\n");
     }
     let mut out = report::print_table(&rows, &a.strategy, runs);
     out.push_str(&format!("\n  the plan, level by level  ('{}')\n  every step: {HABITS}\n", a.strategy));
@@ -256,6 +269,31 @@ fn search(game: &Game, a: &Levels) -> Result<String, String> {
     }
     out.push_str(&format!("  mean to level {}: {}\n", a.max_level, commas(cost, 0)));
     Ok(out)
+}
+
+fn lookahead_all(game: &Game, path: &str, only: &[String]) -> Result<String, String> {
+    let mut plans = match fs::read_to_string(path) {
+        Ok(text) => levels::parse_plans(&text)?,
+        Err(_) => Vec::new(),
+    };
+    let todo: Vec<Target> = if only.is_empty() {
+        levels::targets().into_iter().filter(|t| plans.iter().all(|(p, _)| p != t)).collect()
+    } else {
+        only.iter().map(|t| Target::parse(t)).collect::<Result<_, _>>()?
+    };
+    let log = |line: &str| println!("  {line}");
+    let order = levels::targets();
+    // one target at a time, written as each finishes, so a long search can be
+    // stopped and resumed
+    for target in todo {
+        for (target, plan, _) in levels::lookahead_all(game, Some(&[target]), &log)? {
+            plans.retain(|(t, _)| *t != target);
+            plans.push((target, plan));
+        }
+        plans.sort_by_key(|(t, _)| order.iter().position(|o| *o == *t));
+        fs::write(path, levels::format_plans(&plans)).map_err(|e| format!("{path}: {e}"))?;
+    }
+    Ok(format!("wrote {path}\n"))
 }
 
 fn main() -> ExitCode {

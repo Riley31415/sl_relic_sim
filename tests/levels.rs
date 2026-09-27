@@ -30,6 +30,11 @@ fn the_requirement_table_matches_the_sheet() {
     assert_eq!(q[8], Some(Quest::Total { glory: 59, despair: 17 }));
     assert_eq!(q[9], Some(Quest::Relics { which: vec![6, 7, 8], bar: Bar::new(6, Some(2)) }));
     assert_eq!(q[10], Some(Quest::Total { glory: 68, despair: 19 }));
+    assert_eq!(q[11], Some(Quest::Total { glory: 71, despair: 18 }));
+    assert_eq!(q[12], Some(Quest::Total { glory: 73, despair: 17 }));
+    assert_eq!(q[13], Some(Quest::Relics { which: vec![9, 10, 11], bar: Bar::new(7, Some(2)) }));
+    assert_eq!(q[17], Some(Quest::Total { glory: 89, despair: 21 }));
+    assert_eq!(q[20], Some(Quest::Total { glory: 96, despair: 16 }));
     assert_eq!(q[1], None); // level 1 is free
     assert_eq!(game().max_level(), MAX_LEVEL);
     assert_eq!(RELICS[CRIT], "Demon Eye of Weakness");
@@ -37,11 +42,13 @@ fn the_requirement_table_matches_the_sheet() {
 }
 
 #[test]
-fn the_banked_relics_are_level_9s() {
-    assert_eq!(game().bank_level(), 9);
-    assert_eq!(game().banked_relics(), set_of(&[6, 7, 8]));
-    assert_eq!(game().future_named(4), set_of(&[3, 4, 5, 6, 7, 8]));
-    assert_eq!(game().future_named(9), 0);
+fn banking_looks_at_the_next_named_relics() {
+    assert_eq!(game().next_named(4), Some((5, set_of(&[3, 4, 5]))));
+    assert_eq!(game().next_named(6), Some((9, set_of(&[6, 7, 8]))));
+    assert_eq!(game().next_named(9), Some((13, set_of(&[9, 10, 11]))));
+    assert_eq!(game().next_named(13), None);
+    assert_eq!(game().future_named(9), set_of(&[9, 10, 11]));
+    assert_eq!(game().future_named(13), 0);
 }
 
 #[test]
@@ -55,13 +62,18 @@ fn pity_meter_sizes_and_gains() {
 
 #[test]
 fn level_multiplier_and_damage() {
-    let steps: Vec<f64> = (1..=10).map(level_multiplier).collect();
+    let steps: Vec<f64> = (1..=12).map(level_multiplier).collect();
     assert_eq!(steps[0], 0.0);
     for pair in steps[..7].windows(2) {
         assert!(close(pair[1] - pair[0], 0.05, 1e-12)); // levels 2-7: +5% each
     }
     assert!(close(steps[8], 0.50, 1e-12)); // level 9
     assert!(close(steps[9], 0.60, 1e-12)); // level 10
+    assert!(close(steps[10], 0.70, 1e-12)); // level 11
+    assert!(close(steps[11], 0.80, 1e-12)); // level 12
+    let at = |lvl| level_multiplier(lvl);
+    assert!(close(at(15), 1.10, 1e-12) && close(at(16), 1.25, 1e-12));
+    assert!(close(at(19), 1.70, 1e-12) && close(at(20), 1.90, 1e-12));
     assert_eq!(damage(1, 0.0, 0.0), 1.0);
     assert!(close(damage(9, 25.0, 10.0), 1.5 * 1.2 * (1.0 + 2.2 / 209.0), 1e-12));
 }
@@ -87,9 +99,9 @@ fn a_level_left_out_uses_the_default() {
 
 #[test]
 fn banking_only_covers_relics_still_to_come() {
-    let p = Plan::new([(8, StepChoice::default().bank()), (9, StepChoice::default().bank())]);
+    let p = Plan::new([(8, StepChoice::default().bank()), (14, StepChoice::default().bank())]);
     assert_eq!(p.protected(game(), 8), set_of(&[6, 7, 8]));
-    assert_eq!(p.protected(game(), 9), 0); // its own level
+    assert_eq!(p.protected(game(), 14), 0); // nothing named after level 13
     assert_eq!(p.protected(game(), 6), 0); // not banked there
 }
 
@@ -110,7 +122,7 @@ fn named_relic_levels_only_decide_their_filler() {
     }
     assert!(levels::step_choices(game(), 4).len() > 100);
     assert_eq!(levels::knobs(game(), 4), ["filler", "bank", "profile", "closer", "score"]);
-    assert!(!levels::knobs(game(), 9).contains(&"bank"));
+    assert!(!levels::knobs(game(), 14).contains(&"bank"));
 }
 
 #[test]
@@ -119,9 +131,11 @@ fn the_saved_plans() {
     assert_eq!(look.step(6).profile, Some(Profile::Repair));
     assert_eq!(look.step(2).filler, None); // look-ahead saves its early stock
     assert_eq!(greedy.step(2).filler, Some((4, 2))); // greedy spends it on pity
-    for lvl in [8, 10] {
+    for lvl in [8, 11, 12, 14, 20] {
         assert_eq!(greedy.step(lvl).profile, Some(Profile::Repair));
+        assert_eq!(look.step(lvl).profile, Some(Profile::Repair));
     }
+    assert_eq!(look.step(13).filler, None); // no filler on the last named relics
     assert_eq!(plan("minimal"), Plan::default());
 }
 
@@ -219,10 +233,14 @@ fn stock_on_hand_is_used_before_summoning() {
 }
 
 #[test]
-fn filler_makes_levelling_cheaper() {
-    let filled = Plan::new([2, 3, 5, 9].map(|lvl| (lvl, StepChoice::filler((4, 2)))));
-    let plain = levels::total_cost(game(), &Plan::default(), 2000, 7, MAX_LEVEL).unwrap();
-    assert!(levels::total_cost(game(), &filled, 2000, 7, MAX_LEVEL).unwrap() < plain);
+fn filler_makes_its_own_step_cheaper() {
+    // spare stock spent for pity shortens the wait on a named-relic level
+    // (though to level 20 the stock it burns is missed later on)
+    for lvl in [5, 9] {
+        let filled = Plan::new([(lvl, StepChoice::filler((4, 2)))]);
+        let plain = levels::step_cost(game(), &Plan::default(), lvl, 2000, 7).unwrap();
+        assert!(levels::step_cost(game(), &filled, lvl, 2000, 7).unwrap() < plain, "level {lvl}");
+    }
 }
 
 #[test]
@@ -251,7 +269,7 @@ fn the_searched_plans_beat_the_baseline() {
 
 #[test]
 fn a_greedy_search_reports_every_level() {
-    let o = SearchOptions { runs: 100, final_runs: 200, seed: 1, max_level: 4 };
+    let o = SearchOptions { runs: 100, final_runs: 200, seed: 1, max_level: 4, tier: None };
     let (p, rows) = levels::greedy_search(game(), o, &|_| {}).unwrap();
     assert_eq!(rows.iter().map(|r| r.level).collect::<Vec<_>>(), [2, 3, 4]);
     assert!(rows[2].runner_up.is_some() && rows[2].bank_cost.is_some());
@@ -261,7 +279,7 @@ fn a_greedy_search_reports_every_level() {
 #[test]
 fn a_lookahead_search_never_makes_the_start_worse() {
     let before = levels::total_cost(game(), &Plan::default(), 2000, 99, 4).unwrap();
-    let o = SearchOptions { runs: 200, final_runs: 800, seed: 3, max_level: 4 };
+    let o = SearchOptions { runs: 200, final_runs: 800, seed: 3, max_level: 4, tier: None };
     let (p, _cost) = levels::lookahead_search(game(), &Plan::default(), o, &|_| {}).unwrap();
     assert!(levels::total_cost(game(), &p, 2000, 99, 4).unwrap() < before * 1.02);
 }
@@ -299,29 +317,73 @@ fn every_level_is_described_from_the_plan() {
 }
 
 #[test]
-fn both_charts_label_every_bar_and_plot_the_damage_line() {
+fn the_cost_chart_stands_a_bar_at_every_level() {
     let rows = rows();
-    let total = report::chart_svg(&rows, "t", true);
-    let steps = report::marginal_chart_svg(&rows, "s", true);
-    for pair in rows.windows(2) {
-        let (prev, r) = (&pair[0], &pair[1]);
-        assert!(total.contains(&format!(">{}</text>", relic::format::human(r.mean))));
-        assert!(steps.contains(&format!(">{}</text>", relic::format::human(r.mean - prev.mean))));
+    let svg = report::cost_chart_svg(&rows, "t");
+    assert_eq!(svg.matches("<rect class=\"lv-bar\"").count(), rows.len() - 1);
+    assert!(svg.contains(">log dmg</text>") && svg.contains(">+0%</text>"));
+    for r in &rows[1..] {
+        assert!(svg.contains(&format!(
+            "<title>level {}: {} diamonds",
+            r.level,
+            relic::format::commas(r.mean, 0)
+        )));
     }
-    for svg in [&total, &steps] {
-        assert_eq!(svg.matches("<circle").count(), rows.len() - 1);
-        assert!(svg.contains(">log dmg</text>") && svg.contains(">+0%</text>"));
+    // one climb, nothing far out on its own: no break in the axis
+    assert!(!svg.contains("axis broken"));
+}
+
+#[test]
+fn the_cost_axis_breaks_before_a_far_last_tier() {
+    let o = RunOptions::default().with_tiers(&levels::GREEDY_TIERS);
+    let rows = level_rows(game(), &plan("greedy"), 60, 1, &o).unwrap();
+    let svg = report::cost_chart_svg(&rows, "t");
+    assert!(svg.contains("(axis broken before the last bar)"));
+    assert_eq!(svg.matches("<polyline class=\"lv-axis\"").count(), 1); // the zig-zag
+    assert!(svg.contains(&format!(">{}</text>", relic::format::human(rows[rows.len() - 1].mean))));
+}
+
+#[test]
+fn the_efficiency_chart_plots_every_level_up_against_the_reference() {
+    let rows = rows();
+    let svg = report::efficiency_chart_svg(&rows, "e");
+    let from = report::EFFICIENCY_FROM;
+    assert_eq!(svg.matches("<circle class=\"lv-effdot\"").count(), rows.len() - from + 1);
+    assert_eq!(svg.matches("<polyline class=\"lv-eff\"").count(), 1);
+    assert!(svg.contains("<line class=\"lv-ref\"") && svg.contains(">19* Orr: 16% dmg for 156k dia</text>"));
+    for r in &rows[1..] {
+        assert_eq!(svg.contains(&format!(">L{}</text>", r.level)), r.level >= from, "L{}", r.level);
     }
 }
 
 #[test]
-fn dmg_ticks_step_by_ten() {
-    assert_eq!(report::dmg_ticks(81.6), [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]);
-    assert_eq!(report::dmg_ticks(17.5), [0, 10, 20]);
-    assert_eq!(report::dmg_ticks(3.0), [0, 10]);
+fn the_cost_chart_names_every_bar() {
+    let o = RunOptions::default().with_tiers(&levels::GREEDY_TIERS);
+    let rows = level_rows(game(), &plan("greedy"), 60, 1, &o).unwrap();
+    let svg = report::cost_chart_svg(&rows, "t");
+    for r in &rows[1..] {
+        let tick = r.tier.map_or_else(|| format!("L{}", r.level), |m| format!("{m}%"));
+        assert!(svg.contains(&format!(">{tick}</text>")), "{tick}");
+    }
 }
 
-/// Gaps between the right-axis labels, top to bottom.
+#[test]
+fn efficiency_is_log_damage_per_million_diamonds() {
+    let (_, mult, cost) = report::EFFICIENCY_REFERENCE;
+    assert!(close(report::efficiency(mult, cost), 1.1664f64.ln() / 156_700.0 * 1e6, 1e-12));
+    assert!(close(report::efficiency(mult, cost), 0.982, 0.001));
+    // twice the damage (in log terms) for the same diamonds is twice as efficient
+    assert!(close(report::efficiency(1.21, 1e5), 2.0 * report::efficiency(1.1, 1e5), 1e-12));
+}
+
+#[test]
+fn dmg_ticks_step_evenly_to_just_past_the_top() {
+    assert_eq!(report::dmg_ticks(81.6, 20), [0, 20, 40, 60, 80, 100]);
+    assert_eq!(report::dmg_ticks(80.0, 20), [0, 20, 40, 60, 80]);
+    assert_eq!(report::dmg_ticks(3.0, 10), [0, 10]);
+}
+
+/// Gaps between the damage-axis labels, top to bottom.
 fn tick_gaps(svg: &str) -> Vec<f64> {
     let ys: Vec<f64> = svg
         .lines()
@@ -332,29 +394,193 @@ fn tick_gaps(svg: &str) -> Vec<f64> {
 }
 
 #[test]
-fn log_ticks_bunch_up_and_linear_ticks_do_not() {
-    let rows = rows();
-    let log = tick_gaps(&report::chart_svg(&rows, "t", true));
+fn log_ticks_bunch_up_as_they_rise() {
+    let log = tick_gaps(&report::cost_chart_svg(&rows(), "t"));
     assert!(log.iter().all(|&g| g > 0.0));
     assert!(log[0] > log[log.len() - 1]);
-    let linear_svg = report::chart_svg(&rows, "t", false);
-    let linear = tick_gaps(&linear_svg);
-    let (lo, hi) = linear.iter().fold((f64::MAX, f64::MIN), |(a, b), &g| (a.min(g), b.max(g)));
-    assert!(hi - lo <= 0.2);
-    assert!(linear_svg.contains(">dmg</text>") && !linear_svg.contains("log dmg"));
 }
 
 #[test]
 fn the_markdown_has_both_modes_and_every_level() {
     let doc = report::markdown(60, 1).unwrap();
-    for heading in ["## Greedy mode", "## Look-ahead mode", "## Strategy at each level"] {
+    for heading in
+        ["## Greedy mode", "## Look-ahead mode", "## Strategy", "### Greedy mode", "### Look-ahead mode"]
+    {
         assert!(doc.contains(heading), "{heading}");
     }
+    assert!(!doc.contains("### Level ")); // grouped, not one section a level
+    assert!(doc.contains("Keeps its spare relics instead of spending them on pity"));
+    assert!(doc.contains("**Pays more up front**") && doc.contains("**and gets it back**"));
+    let strategy = &doc[doc.find("## Strategy").unwrap()..];
     for lvl in 2..=MAX_LEVEL {
-        assert!(doc.contains(&format!("### Level {lvl} - ")));
-        assert_eq!(doc.matches(&format!("| **{lvl}** |")).count(), 2);
+        // every level appears in both modes' grouped lists
+        let listed = |s: &str| {
+            s.lines().filter(|l| l.starts_with("- **Level")).any(|l| {
+                let head = &l[..l.find(":**").unwrap()];
+                head.split(|c: char| !c.is_ascii_digit()).any(|n| n == lvl.to_string())
+            })
+        };
+        let (greedy, look) = strategy.split_at(strategy.find("### Look-ahead mode").unwrap());
+        assert!(listed(greedy) && listed(look), "level {lvl}");
+        // a row in each mode's table and one in the attempt table
+        assert_eq!(doc.matches(&format!("| **{lvl}** |")).count(), 3);
     }
     assert!(doc.contains("60 simulations."));
-    assert_eq!(doc.matches("<svg").count(), 8); // 2 modes x log/linear x 2
-    assert_eq!(doc.matches(">log dmg</text>").count(), 4);
+    assert!(doc.contains("## One attempt at each level"));
+    assert_eq!(doc.matches("<svg").count(), 4); // 2 modes x 2 charts
+    assert_eq!(doc.matches(">log dmg</text>").count(), 2);
+    assert_eq!(doc.matches(">19* Orr: 16% dmg for 156k dia</text>").count(), 2);
+}
+
+// ------------------------------------------------------------------ tiers
+
+#[test]
+fn the_greedy_tiers_are_level_20_marks() {
+    let marks: std::collections::BTreeSet<u8> =
+        (0..=10u8).flat_map(|g| (0..=10u8).map(move |d| amplification((g, d)) as u8)).collect();
+    assert!(levels::GREEDY_TIERS.iter().all(|m| marks.contains(m)));
+    assert_eq!(levels::GREEDY_TIERS, [43, 46, 48, 50]);
+    assert_eq!(levels::tiers("greedy"), levels::GREEDY_TIERS);
+    assert!(levels::tiers("lookahead").is_empty());
+}
+
+#[test]
+fn each_tier_farms_the_crit_relic_from_level_20() {
+    let o = RunOptions::default().with_tiers(&levels::GREEDY_TIERS);
+    for run in game().simulate(&plan("greedy"), 30, 5, &o).unwrap() {
+        assert_eq!(run.levels.len(), MAX_LEVEL + levels::GREEDY_TIERS.len());
+        for (at, &mark) in run.levels[MAX_LEVEL..].iter().zip(&levels::GREEDY_TIERS) {
+            assert!(amplification(at.crit) >= f64::from(mark));
+            assert!(!at.by_pity);
+        }
+        for pair in run.levels[..MAX_LEVEL].windows(2) {
+            assert!(pair[0].diamonds <= pair[1].diamonds);
+        }
+        // each tier is its own farm from level 20
+        assert!(run.levels[MAX_LEVEL..].iter().all(|t| t.diamonds >= run.levels[MAX_LEVEL - 1].diamonds));
+        // the climb itself is untouched by the tiers after it
+        assert_eq!(run.levels[MAX_LEVEL - 1].atk, run.levels[MAX_LEVEL].atk);
+    }
+    // and the same runs without tiers climb exactly the same way
+    let plain = game().simulate(&plan("greedy"), 30, 5, &RunOptions::default()).unwrap();
+    let tiered = game().simulate(&plan("greedy"), 30, 5, &o).unwrap();
+    let mut extra = 0;
+    for (a, b) in plain.iter().zip(&tiered) {
+        assert_eq!(a.levels[..MAX_LEVEL - 1], b.levels[..MAX_LEVEL - 1]);
+        // at level 20 the leftovers go into the crit relic: more attempts, no
+        // more diamonds, and a crit relic at least as good
+        let (a, b) = (a.levels[MAX_LEVEL - 1], b.levels[MAX_LEVEL - 1]);
+        assert_eq!((a.diamonds, a.by_pity, a.atk), (b.diamonds, b.by_pity, b.atk));
+        assert!(b.attempts >= a.attempts);
+        assert!(amplification(b.crit) >= amplification(a.crit));
+        extra += b.attempts - a.attempts;
+    }
+    assert!(extra > 0);
+}
+
+#[test]
+fn conversion_makes_the_tiers_far_cheaper_than_the_climb() {
+    // leftover stock plus 10-for-7 conversion: 42% is under a tenth of the climb
+    let rows = level_rows(game(), &plan("greedy"), 200, 3, &RunOptions::default().with_tiers(&[42])).unwrap();
+    let (top, tier) = (&rows[MAX_LEVEL - 1], &rows[MAX_LEVEL]);
+    assert_eq!((tier.level, tier.tier, tier.label()), (MAX_LEVEL, Some(42), "20 + 42%".to_string()));
+    assert!(tier.crit_amp >= 42.0);
+    assert!(tier.mean - top.mean < 0.1 * top.mean, "{} vs {}", tier.mean, top.mean);
+}
+
+#[test]
+fn the_markdown_lists_the_tiers_in_both_modes() {
+    let doc = report::markdown(40, 2).unwrap();
+    let look = doc.find("## Look-ahead mode").unwrap();
+    for mark in levels::GREEDY_TIERS {
+        let row = format!("| **20 + {mark}%** |");
+        assert_eq!(doc.matches(&row).count(), 2, "{row}");
+        assert!(doc.find(&row).unwrap() < look && doc.rfind(&row).unwrap() > look);
+    }
+    assert!(doc.contains("Every row is its own look-ahead"));
+    assert!(doc.contains("- **Past level 20, tiers 43%, 46%, 48% and 50%:**"));
+    assert!(doc.contains(">43%</text>") && doc.contains(">50%</text>"));
+    assert!(!doc.contains("20 + 41%") && !doc.contains("20 + 45%"));
+}
+
+// ------------------------------------------------------------------ look-ahead targets
+
+#[test]
+fn step_codes_round_trip() {
+    for level in [2, 4, 7, 8, 13] {
+        for choice in levels::step_choices(game(), level) {
+            for c in [choice, choice.bank()] {
+                assert_eq!(StepChoice::parse(&c.code()).unwrap(), c, "{}", c.code());
+            }
+        }
+    }
+    assert_eq!(StepChoice::default().code(), "-");
+    assert_eq!(StepChoice::build(Profile::Repair).closer().score().with_filler((4, 1)).code(), "R,c,s,f41");
+    assert!(StepChoice::parse("R,x").is_err() && StepChoice::parse("B5").is_err());
+}
+
+#[test]
+fn plan_codes_round_trip() {
+    for (_, p) in levels::strategies() {
+        assert_eq!(Plan::parse(&p.code()).unwrap(), p);
+    }
+    assert_eq!(plan("lookahead").up_to(6).code(), "4=B51,c,s; 6=R,c,s");
+}
+
+#[test]
+fn targets_are_every_level_then_every_tier() {
+    let targets = levels::targets();
+    assert_eq!(targets.len(), MAX_LEVEL - 1 + levels::GREEDY_TIERS.len());
+    assert_eq!(targets[0], levels::Target::level(2));
+    assert_eq!(targets[targets.len() - 1], levels::Target::tier(50));
+    for t in &targets {
+        assert_eq!(levels::Target::parse(&t.code()).unwrap(), *t);
+    }
+    assert_eq!(levels::Target::tier(41).code(), "20+41");
+}
+
+#[test]
+fn every_target_has_a_plan_that_stops_at_it() {
+    let plans = levels::lookahead_plans().unwrap();
+    assert_eq!(plans.iter().map(|(t, _)| *t).collect::<Vec<_>>(), levels::targets());
+    for (t, p) in &plans {
+        assert!(p.steps.keys().all(|&l| l <= t.level), "{}", t.code());
+    }
+}
+
+#[test]
+fn saved_plans_parse_and_format_back() {
+    let text = "# a comment
+
+4: 4=B52,c,s
+20+50: 8=R,c,s,b,f41; 20=R,c,f42
+";
+    let plans = levels::parse_plans(text).unwrap();
+    assert_eq!(plans.len(), 2);
+    assert_eq!(levels::parse_plans(&levels::format_plans(&plans)).unwrap(), plans);
+}
+
+#[test]
+fn each_look_ahead_row_is_its_own_target() {
+    let rows = report::target_rows(game(), 30, 4).unwrap();
+    let labels: Vec<String> = rows.iter().map(|r| r.label()).collect();
+    let mut expect = vec!["1".to_string()];
+    expect.extend(levels::targets().iter().map(|t| match t.tier {
+        Some(m) => format!("{} + {m}%", t.level),
+        None => t.level.to_string(),
+    }));
+    assert_eq!(labels, expect);
+    for r in rows.iter().filter(|r| r.tier.is_some()) {
+        assert!(r.crit_amp >= f64::from(r.tier.unwrap()));
+    }
+}
+
+#[test]
+fn a_tier_search_scores_the_climb_and_the_farm_together() {
+    let t = levels::Target::tier(41);
+    let climb =
+        levels::target_cost(game(), &plan("greedy"), 100, 7, levels::Target::level(MAX_LEVEL)).unwrap();
+    let whole = levels::target_cost(game(), &plan("greedy"), 100, 7, t).unwrap();
+    assert!(whole >= climb);
+    assert_eq!(levels::SearchOptions::per_target(t).tier, Some(41));
 }

@@ -20,7 +20,9 @@ use rayon::prelude::*;
 pub use rules::{Bar, Quest, Relic, RelicSet, contains, members, set_of};
 pub use sim::{Economy, Game, LevelUp, Run, RunOptions};
 
-use crate::economy::{DIAMONDS_PER_SUMMON, RELIC_TYPES, RELICS_PER_ATTEMPT, RELICS_PER_SUMMON};
+use crate::economy::{
+    CONVERT_FROM, CONVERT_TO, DIAMONDS_PER_SUMMON, RELIC_TYPES, RELICS_PER_ATTEMPT, RELICS_PER_SUMMON,
+};
 use crate::rng::Rng;
 use rules::LevelRules;
 use tables::LocalTables;
@@ -60,8 +62,12 @@ pub const ATK: usize = 0;
 /// Demon Eye of Weakness, the crit relic.
 pub const CRIT: usize = 1;
 /// As far as the requirement table is known.
-pub const MAX_LEVEL: usize = 10;
+pub const MAX_LEVEL: usize = 20;
 pub const SEED: u64 = 20260922;
+/// Greedy mode keeps going past the top level: the crit relic farmed to each
+/// of these amplifications, each tier a separate farm from level 20 played
+/// for its own mark.
+pub const GREEDY_TIERS: [u8; 4] = [43, 46, 48, 50];
 
 /// What the inheritor needs in order to BE at each level; level 1 is free.
 pub fn requirements() -> Vec<Option<Quest>> {
@@ -81,6 +87,18 @@ pub fn requirements() -> Vec<Option<Quest>> {
         total(59, 17),
         relics(&[6, 7, 8], 6, Some(2)),
         total(68, 19),
+        total(71, 18),
+        total(73, 17),
+        // Abyss's Water Drop, Eye of Typhoon, Emperor Ring on the sheet: the
+        // three relics no earlier level names
+        relics(&[9, 10, 11], 7, Some(2)),
+        total(80, 20),
+        total(83, 20),
+        total(85, 20),
+        total(89, 21),
+        total(91, 20),
+        total(94, 19),
+        total(96, 16),
     ]
 }
 
@@ -112,6 +130,8 @@ impl Game {
                 per_summon: RELICS_PER_SUMMON as usize,
                 per_attempt: RELICS_PER_ATTEMPT,
                 diamonds_per_summon: DIAMONDS_PER_SUMMON,
+                convert_from: CONVERT_FROM,
+                convert_to: CONVERT_TO,
             },
             quests,
             pity_needed: (0..top).map(|goal| if goal == 0 { 0 } else { pity_needed(goal) }).collect(),
@@ -119,20 +139,14 @@ impl Game {
         }
     }
 
-    /// The last level that names its relics: level 9.  Banking keeps these
-    /// relics out of earlier work so their stock is still there when it comes.
-    pub fn bank_level(&self) -> usize {
-        (0..self.quests.len())
-            .rev()
-            .find(|&lvl| matches!(self.quests[lvl], Some(Quest::Relics { .. })))
-            .expect("some level names its relics")
-    }
-
-    pub fn banked_relics(&self) -> RelicSet {
-        match &self.quests[self.bank_level()] {
-            Some(Quest::Relics { which, .. }) => set_of(which),
-            _ => unreachable!("the bank level names its relics"),
-        }
+    /// The next level after `level` that names its relics, and those relics.
+    /// Banking keeps them out of the work before it, so their stock is still
+    /// there when that level comes.
+    pub fn next_named(&self, level: usize) -> Option<(usize, RelicSet)> {
+        (level + 1..self.quests.len()).find_map(|lvl| match &self.quests[lvl] {
+            Some(Quest::Relics { which, .. }) => Some((lvl, set_of(which))),
+            _ => None,
+        })
     }
 
     /// Relics that a LATER level names outright.
@@ -195,7 +209,7 @@ impl Game {
                     .map(|run| run.levels.iter().map(|l| l.diamonds).collect::<Vec<_>>())
             })
             .try_reduce(
-                || vec![0; options.max_level],
+                || vec![0; options.max_level + options.tiers.len()],
                 |a, b| Ok(a.iter().zip(&b).map(|(x, y)| x + y).collect()),
             )?;
         Ok(sums.into_iter().map(|s| s as f64 / runs.max(1) as f64).collect())
@@ -204,7 +218,13 @@ impl Game {
 
 impl RunOptions {
     pub fn to(max_level: usize) -> Self {
-        RunOptions { max_level, start_stock: vec![0; N_RELICS], pity: true }
+        RunOptions { max_level, start_stock: vec![0; N_RELICS], pity: true, tiers: Vec::new() }
+    }
+
+    /// Farm the crit relic to each of `tiers` once `max_level` is reached.
+    pub fn with_tiers(mut self, tiers: &[u8]) -> Self {
+        self.tiers = tiers.to_vec();
+        self
     }
 
     /// The same number of relics of every type on hand at the start.
@@ -227,10 +247,18 @@ pub fn amplification((g, d): Relic) -> f64 {
     (5.0 * f64::from(g) - 2.0 * f64::from(d)).max(0.0)
 }
 
-/// The inheritor's own damage multiplier: +5% for each of levels 2-7, then
-/// +10% for each level from 8 (50% at level 9, 60% at level 10).
+/// The inheritor's own damage multiplier: +5% for each of levels 2-7, +10%
+/// for 8-15, +15% for 16-19 and +20% for 20 (30% at level 7, 110% at 15,
+/// 170% at 19, 190% at 20).
 pub fn level_multiplier(level: usize) -> f64 {
-    0.05 * (level as f64 - 1.0).min(6.0) + 0.10 * (level as f64 - 7.0).max(0.0)
+    (2..=level)
+        .map(|lvl| match lvl {
+            ..=7 => 0.05,
+            8..=15 => 0.10,
+            16..=19 => 0.15,
+            _ => 0.20,
+        })
+        .sum()
 }
 
 /// Damage relative to a level-1 inheritor with bare relics (1.0 = no gain);
@@ -276,7 +304,8 @@ pub struct StepChoice {
     pub closer: bool,
     /// play attempts for max glory + min despair, not all-or-nothing
     pub score: bool,
-    /// keep the level-9 relics out of this level's work and filler
+    /// keep the relics the next named-relic level needs out of this level's
+    /// work and filler
     pub bank: bool,
     /// when nothing the quest needs is affordable: None to summon, or a bar to
     /// roll the best-stocked spare relic toward, for the pity
@@ -312,6 +341,53 @@ impl StepChoice {
         StepChoice { filler: Some(bar), ..self }
     }
 
+    /// A compact code for the saved plan files: "R,c,s,b,f41" for repair,
+    /// keep gap-closers, score, bank, filler 4/1; "B52" for a 5/2 bar; "-" for
+    /// the default.  `prefer` is not a search knob and has no code.
+    pub fn code(&self) -> String {
+        let mut parts = Vec::new();
+        match self.profile {
+            Some(Profile::Repair) => parts.push("R".to_string()),
+            Some(Profile::Bar(g, d)) => parts.push(format!("B{g}{d}")),
+            None => {}
+        }
+        for (on, flag) in [(self.closer, "c"), (self.score, "s"), (self.bank, "b")] {
+            if on {
+                parts.push(flag.to_string());
+            }
+        }
+        if let Some((g, d)) = self.filler {
+            parts.push(format!("f{g}{d}"));
+        }
+        if parts.is_empty() { "-".to_string() } else { parts.join(",") }
+    }
+
+    pub fn parse(code: &str) -> Result<StepChoice, String> {
+        let digits = |s: &str| -> Result<(u8, u8), String> {
+            let b = s.as_bytes();
+            match b {
+                [g, d] if g.is_ascii_digit() && d.is_ascii_digit() => Ok((g - b'0', d - b'0')),
+                _ => Err(format!("bad bar '{s}' in step code '{code}'")),
+            }
+        };
+        let mut choice = StepChoice::default();
+        for part in code.split(',').map(str::trim).filter(|p| !p.is_empty() && *p != "-") {
+            match part {
+                "R" => choice.profile = Some(Profile::Repair),
+                "c" => choice.closer = true,
+                "s" => choice.score = true,
+                "b" => choice.bank = true,
+                _ if part.starts_with('B') => {
+                    let (g, d) = digits(&part[1..])?;
+                    choice.profile = Some(Profile::Bar(g, d));
+                }
+                _ if part.starts_with('f') => choice.filler = Some(digits(&part[1..])?),
+                _ => return Err(format!("unknown part '{part}' in step code '{code}'")),
+            }
+        }
+        Ok(choice)
+    }
+
     pub fn label(&self) -> String {
         let bar = |(g, d): (u8, u8)| report::bar_text(g, Some(d));
         let mut parts = match self.profile {
@@ -333,7 +409,7 @@ impl StepChoice {
             None => "no filler".to_string(),
         });
         if self.bank {
-            parts.push("bank level-9 relics".to_string());
+            parts.push("bank the next named relics".to_string());
         }
         parts.join(", ")
     }
@@ -355,6 +431,32 @@ impl Plan {
         self.steps.get(&level).copied().unwrap_or_default()
     }
 
+    /// "4=B51,c,s; 6=R,c,s": every level that is not the default.
+    pub fn code(&self) -> String {
+        self.steps
+            .iter()
+            .filter(|(_, c)| **c != StepChoice::default())
+            .map(|(level, c)| format!("{level}={}", c.code()))
+            .collect::<Vec<_>>()
+            .join("; ")
+    }
+
+    pub fn parse(code: &str) -> Result<Plan, String> {
+        let mut steps = BTreeMap::new();
+        for step in code.split(';').map(str::trim).filter(|s| !s.is_empty()) {
+            let (level, choice) = step.split_once('=').ok_or(format!("no '=' in plan step '{step}'"))?;
+            let level: usize =
+                level.trim().parse().map_err(|_| format!("bad level in plan step '{step}'"))?;
+            steps.insert(level, StepChoice::parse(choice)?);
+        }
+        Ok(Plan { steps })
+    }
+
+    /// The same plan with nothing past `level`.
+    pub fn up_to(&self, level: usize) -> Plan {
+        Plan { steps: self.steps.range(..=level).map(|(&l, &c)| (l, c)).collect() }
+    }
+
     /// This plan with one level's decisions replaced.
     pub fn with(&self, level: usize, choice: StepChoice) -> Plan {
         let mut steps = self.steps.clone();
@@ -364,7 +466,10 @@ impl Plan {
 
     /// Relics banked while working on `level`.
     pub fn protected(&self, game: &Game, level: usize) -> RelicSet {
-        if self.step(level).bank { game.banked_relics() & game.future_named(level) } else { 0 }
+        match game.next_named(level) {
+            Some((_, relics)) if self.step(level).bank => relics,
+            _ => 0,
+        }
     }
 
     /// This level's decisions as the simulation takes them.
@@ -397,12 +502,19 @@ pub fn strategies() -> Vec<(&'static str, Plan)> {
             "lookahead",
             Plan::new([
                 (4, total(B(5, 1))),
-                (5, StepChoice::filler((4, 2))),
                 (6, total(Repair)),
                 (7, StepChoice::build(B(4, 2)).score()),
                 (8, total(Repair).with_filler((4, 1))),
-                (9, StepChoice::filler((5, 2))),
-                (10, total(Repair).with_filler((4, 1))),
+                (10, total(B(5, 2))),
+                (11, total(Repair).with_filler((5, 2))),
+                (12, total(Repair).with_filler((5, 2))),
+                (14, total(Repair).with_filler((4, 1))),
+                (15, total(Repair).with_filler((4, 2))),
+                (16, total(Repair).with_filler((4, 2))),
+                (17, total(Repair).with_filler((4, 1))),
+                (18, total(Repair).with_filler((4, 2))),
+                (19, StepChoice::build(Repair).closer().with_filler((4, 2))),
+                (20, StepChoice::build(Repair).closer().with_filler((4, 2))),
             ]),
         ),
         // every level-up as cheap as it can be on its own (`--greedy`)
@@ -411,13 +523,23 @@ pub fn strategies() -> Vec<(&'static str, Plan)> {
             Plan::new([
                 (2, StepChoice::filler((4, 2))),
                 (3, StepChoice::filler((4, 2))),
-                (4, total(B(5, 1))),
+                (4, total(B(5, 2))),
                 (5, StepChoice::filler((4, 2))),
-                (6, total(B(5, 1)).with_filler((4, 2))),
-                (7, StepChoice::build(B(4, 2)).score().with_filler((4, 2))),
+                (6, total(B(4, 1)).with_filler((5, 2))),
+                (7, StepChoice::build(B(4, 2)).with_filler((4, 2))),
                 (8, total(Repair).with_filler((4, 1))),
                 (9, StepChoice::filler((4, 2))),
                 (10, total(Repair).with_filler((4, 1))),
+                (11, total(Repair).with_filler((5, 2))),
+                (12, total(Repair).with_filler((5, 2))),
+                (13, StepChoice::filler((4, 2))),
+                (14, total(Repair).with_filler((4, 1))),
+                (15, total(Repair).with_filler((4, 2))),
+                (16, total(Repair).with_filler((4, 2))),
+                (17, total(Repair).with_filler((4, 1))),
+                (18, total(Repair).with_filler((4, 1))),
+                (19, StepChoice::build(Repair).closer().with_filler((4, 2))),
+                (20, total(Repair).with_filler((4, 1))),
             ]),
         ),
         // 4/2 everywhere, all-or-nothing, summon whenever stuck
@@ -425,8 +547,98 @@ pub fn strategies() -> Vec<(&'static str, Plan)> {
     ]
 }
 
+/// What a look-ahead plan is searched for: reaching `level`, or, with a
+/// tier, farming the crit relic to that mark once the top level is reached.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Target {
+    pub level: usize,
+    pub tier: Option<u8>,
+}
+
+impl Target {
+    pub const fn level(level: usize) -> Self {
+        Target { level, tier: None }
+    }
+
+    pub const fn tier(mark: u8) -> Self {
+        Target { level: MAX_LEVEL, tier: Some(mark) }
+    }
+
+    /// "12", or "20+41" for a tier.
+    pub fn code(&self) -> String {
+        match self.tier {
+            Some(mark) => format!("{}+{mark}", self.level),
+            None => self.level.to_string(),
+        }
+    }
+
+    pub fn parse(code: &str) -> Result<Target, String> {
+        let number = |s: &str| s.trim().parse().map_err(|_| format!("bad target '{code}'"));
+        match code.split_once('+') {
+            Some((level, mark)) => Ok(Target { level: number(level)?, tier: Some(number(mark)? as u8) }),
+            None => Ok(Target::level(number(code)?)),
+        }
+    }
+
+    /// The runs this target is simulated with; its result is the last row.
+    pub fn options(&self) -> RunOptions {
+        let options = RunOptions::to(self.level);
+        match self.tier {
+            Some(mark) => options.with_tiers(&[mark]),
+            None => options,
+        }
+    }
+}
+
+/// Every look-ahead target: each level from 2 to the top, then greedy's tiers.
+pub fn targets() -> Vec<Target> {
+    (2..=MAX_LEVEL).map(Target::level).chain(GREEDY_TIERS.iter().map(|&m| Target::tier(m))).collect()
+}
+
+/// The look-ahead plan for each target, in `targets()` order: the one saved
+/// by `relic levels --lookahead-all` (lookahead_plans.txt), or for a target
+/// not searched yet the level-20 look-ahead plan cut down to it.
+pub fn lookahead_plans() -> Result<Vec<(Target, Plan)>, String> {
+    let saved = parse_plans(include_str!("lookahead_plans.txt"))?;
+    let fallback = strategy("lookahead").expect("a named plan");
+    Ok(targets()
+        .into_iter()
+        .map(|target| {
+            let plan = saved.iter().find(|(t, _)| *t == target).map(|(_, p)| p.clone());
+            (target, plan.unwrap_or_else(|| fallback.up_to(target.level)))
+        })
+        .collect())
+}
+
+/// Lines of "target: plan code"; blank lines and # comments skipped.
+pub fn parse_plans(text: &str) -> Result<Vec<(Target, Plan)>, String> {
+    text.lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .map(|line| {
+            let (target, plan) = line.split_once(':').ok_or(format!("no ':' in '{line}'"))?;
+            Ok((Target::parse(target)?, Plan::parse(plan)?))
+        })
+        .collect()
+}
+
+pub fn format_plans(plans: &[(Target, Plan)]) -> String {
+    let mut out = String::from(
+        "# The look-ahead plan for each target: the cheapest route to that level, or\n# to level 20 plus a crit relic tier.  Generated by\n# `relic levels --lookahead-all src/levels/lookahead_plans.txt`.\n",
+    );
+    for (target, plan) in plans {
+        out.push_str(&format!("{}: {}\n", target.code(), plan.code()));
+    }
+    out
+}
+
 pub fn strategy(name: &str) -> Option<Plan> {
     strategies().into_iter().find(|(n, _)| *n == name).map(|(_, plan)| plan)
+}
+
+/// The crit relic tiers a named plan goes on to farm at the top level.
+pub fn tiers(name: &str) -> &'static [u8] {
+    if name == "greedy" { &GREEDY_TIERS } else { &[] }
 }
 
 /// Every StepChoice worth trying for `level` (banking aside).  A level that
@@ -466,7 +678,7 @@ pub fn step_choices(game: &Game, level: usize) -> Vec<StepChoice> {
 /// The knobs a level has, for a descent that turns one knob at a time.
 pub fn knobs(game: &Game, level: usize) -> Vec<&'static str> {
     let mut knobs = vec!["filler"];
-    if game.future_named(level) & game.banked_relics() != 0 {
+    if game.next_named(level).is_some() {
         knobs.push("bank");
     }
     match game.quests[level] {
@@ -502,6 +714,11 @@ pub fn total_cost(game: &Game, plan: &Plan, runs: u64, seed: u64, max_level: usi
     Ok(*game.mean_costs(plan, runs, seed, &RunOptions::to(max_level))?.last().expect("at least level 1"))
 }
 
+/// Mean diamonds to reach `target` from level 1.
+pub fn target_cost(game: &Game, plan: &Plan, runs: u64, seed: u64, target: Target) -> Result<f64, String> {
+    Ok(*game.mean_costs(plan, runs, seed, &target.options())?.last().expect("at least level 1"))
+}
+
 /// Mean diamonds spent on the step from level - 1 to `level` alone.
 pub fn step_cost(game: &Game, plan: &Plan, level: usize, runs: u64, seed: u64) -> Result<f64, String> {
     let costs = game.mean_costs(plan, runs, seed, &RunOptions::to(level))?;
@@ -517,15 +734,27 @@ pub struct SearchOptions {
     pub final_runs: u64,
     pub seed: u64,
     pub max_level: usize,
+    /// for a look-ahead: also farm the crit relic to this mark at `max_level`,
+    /// and score plans on the whole cost
+    pub tier: Option<u8>,
 }
 
 impl SearchOptions {
     pub fn greedy() -> Self {
-        SearchOptions { runs: 10_000, final_runs: 50_000, seed: 777, max_level: MAX_LEVEL }
+        SearchOptions { runs: 10_000, final_runs: 50_000, seed: 777, max_level: MAX_LEVEL, tier: None }
     }
 
     pub fn lookahead() -> Self {
-        SearchOptions { runs: 10_000, final_runs: 50_000, seed: 4242, max_level: MAX_LEVEL }
+        SearchOptions { runs: 10_000, final_runs: 50_000, seed: 4242, max_level: MAX_LEVEL, tier: None }
+    }
+
+    /// The look-ahead settings, aimed at one target.
+    pub fn per_target(target: Target) -> Self {
+        SearchOptions { max_level: target.level, tier: target.tier, ..SearchOptions::lookahead() }
+    }
+
+    fn target(&self) -> Target {
+        Target { level: self.max_level, tier: self.tier }
     }
 }
 
@@ -536,7 +765,7 @@ pub struct GreedyRow {
     pub choice: StepChoice,
     pub cost: f64,
     pub runner_up: Option<(StepChoice, f64)>,
-    /// what banking the level-9 relics would have cost this step
+    /// what banking the next named relics would have cost this step
     pub bank_cost: Option<f64>,
 }
 
@@ -599,7 +828,8 @@ pub fn greedy_search(
     Ok((plan, report))
 }
 
-/// The cheapest plan to `max_level` overall, by coordinate descent from
+/// The cheapest plan to `max_level` (and its tier, if any) overall, by
+/// coordinate descent from
 /// `start`: every knob of every level is turned in turn, each value scored on
 /// the total cost, and a change is kept only if it still wins by 0.5% on a
 /// larger, fresh set of paired runs.  Stops when a sweep changes nothing.
@@ -622,7 +852,7 @@ pub fn lookahead_search(
                         .enumerate()
                         .map(|(i, &t)| {
                             Ok((
-                                total_cost(game, &plan.with(level, t), o.runs, o.seed + sweep, o.max_level)?,
+                                target_cost(game, &plan.with(level, t), o.runs, o.seed + sweep, o.target())?,
                                 i,
                             ))
                         })
@@ -630,8 +860,8 @@ pub fn lookahead_search(
                 );
                 let best = trials[scored[0].1];
                 let check = o.seed + 1000 + sweep;
-                let now = total_cost(game, &plan, o.final_runs, check, o.max_level)?;
-                let new = total_cost(game, &plan.with(level, best), o.final_runs, check, o.max_level)?;
+                let now = target_cost(game, &plan, o.final_runs, check, o.target())?;
+                let new = target_cost(game, &plan.with(level, best), o.final_runs, check, o.target())?;
                 if new < now * 0.995 {
                     log(&format!(
                         "sweep {sweep} L{level} {knob}: {} -> {}  {} -> {}",
@@ -649,6 +879,34 @@ pub fn lookahead_search(
             break;
         }
     }
-    let cost = total_cost(game, &plan, o.final_runs, o.seed + 2000, o.max_level)?;
+    let cost = target_cost(game, &plan, o.final_runs, o.seed + 2000, o.target())?;
     Ok((plan, cost))
+}
+
+/// A look-ahead search for every target in turn, each starting from whichever
+/// of the saved greedy and look-ahead plans reaches that target cheaper, and
+/// trimmed to the levels it plays.  `log` hears each target as it finishes.
+pub fn lookahead_all(
+    game: &Game,
+    only: Option<&[Target]>,
+    log: &dyn Fn(&str),
+) -> Result<Vec<(Target, Plan, f64)>, String> {
+    let starts = [strategy("greedy").expect("a named plan"), strategy("lookahead").expect("a named plan")];
+    let mut out = Vec::new();
+    for target in targets().into_iter().filter(|t| only.is_none_or(|o| o.contains(t))) {
+        let o = SearchOptions::per_target(target);
+        let mut best: Option<(f64, &Plan)> = None;
+        for start in &starts {
+            let cost = target_cost(game, start, o.final_runs, o.seed + 3000, target)?;
+            if best.is_none_or(|(c, _)| cost < c) {
+                best = Some((cost, start));
+            }
+        }
+        let start = best.expect("two starts").1.up_to(target.level);
+        let (plan, cost) = lookahead_search(game, &start, o, &|_| {})?;
+        let plan = plan.up_to(target.level);
+        log(&format!("{}: {}  {}", target.code(), crate::format::commas(cost, 0), plan.code()));
+        out.push((target, plan, cost));
+    }
+    Ok(out)
 }

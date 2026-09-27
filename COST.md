@@ -18,9 +18,21 @@ relic cost --min-mark 0      # include the cheap marks below 35% too
 |---|---|
 | 1 summon | 5,000 diamonds, 11 random relics |
 | relic types | 12, of which type 1 (crit) is the one we want |
-| crit relics per summon | Binomial(11, 1/12) = **0.9167** on average |
+| crit relics dropped per summon | Binomial(11, 1/12) = 0.9167 on average |
+| conversion | 10 relics of one other type -> 7 crit relics |
+| other relics per summon | 10.0833, worth 7.0583 crit relics |
+| crit relics per summon | **7.9750** in the long run, conversions included |
 | 1 inheritance attempt | 10 crit relics |
-| **so 1 attempt costs** | **about 54,545 diamonds** once leftovers carry over |
+| **so 1 attempt costs** | **about 6,270 diamonds** once leftovers carry over |
+
+Conversion does most of the work: the other types are 11 in 12 of every
+summon, so they supply 89% of the crit relics. Without it an attempt
+would cost 54,545 diamonds, 8.7x as much.
+
+A conversion needs 10 of the **same** type, so the others build up in
+11 separate piles and up to 9 of each can sit waiting. That costs nothing in the
+long run but makes the first few attempts dearer: early on, most of what has been
+summoned is still stuck in part-filled piles.
 
 Each attempt re-rolls the relic and you keep the best result you have ever hit,
 so reaching a mark is a matter of attempting until one lands. That makes the
@@ -36,98 +48,97 @@ The diamond total at the moment each mark is first met is recorded, then average
 The per-attempt outcome is drawn from the solver's **exact** outcome
 distribution rather than by replaying the policy move by move. The solver
 enumerates every branch, so those are the same distribution - a speedup, not an
-approximation. The summon side is simulated properly, so the leftover crit relics
-that carry between attempts are handled exactly.
+approximation. The summon side is simulated relic by relic: every relic's
+type is drawn, each type's pile is converted the moment it reaches 10,
+and the crits and part-filled piles carry between attempts exactly.
 
 ## Cost by mark
 
 Every achievable mark from 35% up. Below that the table is not worth
-printing: a single attempt clears 30% 60% of the time,
+printing: a single attempt clears 30% 72% of the time,
 so everything cheaper than 35% costs about one attempt
-(92.7K or less). Run with `--min-mark 0` for the
+(35.7K or less). Run with `--min-mark 0` for the
 full 48 marks.
 
 | amp | P(one attempt) | mean attempts | mean diamonds | median | 90th pct |
 |---|---|---|---|---|---|
-| **35%** | 29.2472% | 3.4 | 190,106 | 140K | 400K |
-| **36%** | 29.0089% | 3.5 | 191,510 | 140K | 405K |
-| **37%** | 18.8890% | 5.3 | 290,787 | 210K | 625K |
-| **38%** | 17.4950% | 5.7 | 313,482 | 225K | 680K |
-| **39%** | 14.6375% | 6.8 | 375,586 | 270K | 830K |
-| **40%** | 9.6883% | 10.4 | 568,278 | 400K | 1.29M |
-| **41%** | 9.4297% | 10.7 | 582,845 | 410K | 1.31M |
-| **42%** | 3.9551% | 25.3 | 1,382,616 | 965K | 3.13M |
-| **43%** | 3.9010% | 25.7 | 1,401,899 | 980K | 3.18M |
-| **44%** | 1.8328% | 54.1 | 2,949,212 | 2.08M | 6.75M |
-| **45%** | 1.4729% | 67.2 | 3,663,061 | 2.56M | 8.38M |
-| **46%** | 1.2348% | 80.3 | 4,380,313 | 3.02M | 10.1M |
-| **48%** | 0.5033% | 199.3 | 10,873,828 | 7.55M | 25.1M |
-| **50%** | 0.0689% | 1,434.5 | 78,250,504 | 54.1M | 180M |
+| **35%** | 41.0911% | 2.4 | 41,921 | 40K | 55K |
+| **36%** | 40.8342% | 2.4 | 42,001 | 40K | 55K |
+| **37%** | 27.7180% | 3.6 | 48,657 | 45K | 70K |
+| **38%** | 26.2912% | 3.8 | 49,802 | 45K | 75K |
+| **39%** | 22.0147% | 4.5 | 54,070 | 50K | 85K |
+| **40%** | 15.6987% | 6.3 | 65,018 | 55K | 110K |
+| **41%** | 15.2666% | 6.5 | 66,202 | 55K | 115K |
+| **42%** | 6.9312% | 14.3 | 114,072 | 85K | 230K |
+| **43%** | 6.8667% | 14.4 | 114,882 | 85K | 230K |
+| **44%** | 3.2436% | 30.8 | 217,472 | 160K | 465K |
+| **45%** | 2.7286% | 37.0 | 256,368 | 185K | 560K |
+| **46%** | 2.2605% | 44.8 | 304,910 | 220K | 670K |
+| **48%** | 1.0109% | 99.2 | 646,141 | 460K | 1.46M |
+| **50%** | 0.1530% | 654.8 | 4,129,507 | 2.85M | 9.54M |
 
 <svg viewBox="0 0 634 296" width="634" height="296" role="img" xmlns="http://www.w3.org/2000/svg" aria-label="Diamonds needed to reach each amplification mark at level 20">
 <title>Diamond cost by amplification mark, inheritor level 20</title>
-<desc>Mean diamonds to first reach each amplification, log scale. 58.2K at 1 percent rising to 78.3M at 50 percent.</desc>
+<desc>Mean diamonds to first reach each amplification, log scale. 33.2K at 1 percent rising to 4.13M at 50 percent.</desc>
 <style>.ec-line{fill:none;stroke:#2a78d6;stroke-width:2}.ec-dot{fill:#2a78d6}.ec-grid{stroke:#e1e0d9;stroke-width:1}.ec-axis{stroke:#c3c2b7;stroke-width:1}.ec-ink{fill:#52514e}.ec-muted{fill:#898781}.ec-t{font:11px system-ui,-apple-system,'Segoe UI',sans-serif}.ec-b{font:600 11px system-ui,-apple-system,'Segoe UI',sans-serif}@media(prefers-color-scheme:dark){.ec-line{stroke:#3987e5}.ec-dot{fill:#3987e5}.ec-grid{stroke:#2c2c2a}.ec-axis{stroke:#383835}.ec-ink{fill:#c3c2b7}}</style>
 <line class="ec-grid" x1="58" y1="256.0" x2="618" y2="256.0"/>
 <text class="ec-t ec-muted" x="50" y="260.0" text-anchor="end">10K</text>
-<line class="ec-grid" x1="58" y1="198.5" x2="618" y2="198.5"/>
-<text class="ec-t ec-muted" x="50" y="202.5" text-anchor="end">100K</text>
-<line class="ec-grid" x1="58" y1="141.0" x2="618" y2="141.0"/>
-<text class="ec-t ec-muted" x="50" y="145.0" text-anchor="end">1M</text>
-<line class="ec-grid" x1="58" y1="83.5" x2="618" y2="83.5"/>
-<text class="ec-t ec-muted" x="50" y="87.5" text-anchor="end">10M</text>
+<line class="ec-grid" x1="58" y1="179.3" x2="618" y2="179.3"/>
+<text class="ec-t ec-muted" x="50" y="183.3" text-anchor="end">100K</text>
+<line class="ec-grid" x1="58" y1="102.7" x2="618" y2="102.7"/>
+<text class="ec-t ec-muted" x="50" y="106.7" text-anchor="end">1M</text>
 <line class="ec-grid" x1="58" y1="26.0" x2="618" y2="26.0"/>
-<text class="ec-t ec-muted" x="50" y="30.0" text-anchor="end">100M</text>
+<text class="ec-t ec-muted" x="50" y="30.0" text-anchor="end">10M</text>
 <text class="ec-t ec-muted" x="50" y="17" text-anchor="end">diamonds</text>
-<polyline class="ec-line" points="58.0,212.0 69.4,212.0 80.9,212.0 92.3,212.0 103.7,212.0 115.1,212.0 126.6,212.0 138.0,212.0 149.4,212.0 160.9,212.0 172.3,212.0 183.7,212.0 195.1,212.0 206.6,212.0 218.0,212.0 229.4,211.9 240.9,211.9 252.3,211.8 263.7,211.8 275.1,211.6 286.6,211.3 298.0,211.2 309.4,210.3 320.9,210.2 332.3,209.1 343.7,208.3 355.1,207.8 366.6,204.9 378.0,204.7 389.4,200.4 400.9,199.9 412.3,197.0 423.7,193.2 435.1,192.3 446.6,182.5 458.0,182.3 469.4,171.8 480.9,170.0 492.3,165.5 503.7,155.1 515.1,154.5 526.6,132.9 538.0,132.6 549.4,114.0 560.9,108.6 572.3,104.1 595.1,81.4 618.0,32.1"/>
-<circle class="ec-dot" cx="58.0" cy="212.0" r="2.6"><title>1%: 58,162 diamonds on average (1.0 attempts)</title></circle>
-<circle class="ec-dot" cx="69.4" cy="212.0" r="2.6"><title>2%: 58,162 diamonds on average (1.0 attempts)</title></circle>
-<circle class="ec-dot" cx="80.9" cy="212.0" r="2.6"><title>3%: 58,162 diamonds on average (1.0 attempts)</title></circle>
-<circle class="ec-dot" cx="92.3" cy="212.0" r="2.6"><title>4%: 58,164 diamonds on average (1.0 attempts)</title></circle>
-<circle class="ec-dot" cx="103.7" cy="212.0" r="2.6"><title>5%: 58,164 diamonds on average (1.0 attempts)</title></circle>
-<circle class="ec-dot" cx="115.1" cy="212.0" r="2.6"><title>6%: 58,164 diamonds on average (1.0 attempts)</title></circle>
-<circle class="ec-dot" cx="126.6" cy="212.0" r="2.6"><title>7%: 58,164 diamonds on average (1.0 attempts)</title></circle>
-<circle class="ec-dot" cx="138.0" cy="212.0" r="2.6"><title>8%: 58,164 diamonds on average (1.0 attempts)</title></circle>
-<circle class="ec-dot" cx="149.4" cy="212.0" r="2.6"><title>9%: 58,164 diamonds on average (1.0 attempts)</title></circle>
-<circle class="ec-dot" cx="160.9" cy="212.0" r="2.6"><title>10%: 58,164 diamonds on average (1.0 attempts)</title></circle>
-<circle class="ec-dot" cx="172.3" cy="212.0" r="2.6"><title>11%: 58,166 diamonds on average (1.0 attempts)</title></circle>
-<circle class="ec-dot" cx="183.7" cy="212.0" r="2.6"><title>12%: 58,176 diamonds on average (1.0 attempts)</title></circle>
-<circle class="ec-dot" cx="195.1" cy="212.0" r="2.6"><title>13%: 58,206 diamonds on average (1.0 attempts)</title></circle>
-<circle class="ec-dot" cx="206.6" cy="212.0" r="2.6"><title>14%: 58,230 diamonds on average (1.0 attempts)</title></circle>
-<circle class="ec-dot" cx="218.0" cy="212.0" r="2.6"><title>15%: 58,258 diamonds on average (1.0 attempts)</title></circle>
-<circle class="ec-dot" cx="229.4" cy="211.9" r="2.6"><title>16%: 58,401 diamonds on average (1.0 attempts)</title></circle>
-<circle class="ec-dot" cx="240.9" cy="211.9" r="2.6"><title>17%: 58,418 diamonds on average (1.0 attempts)</title></circle>
-<circle class="ec-dot" cx="252.3" cy="211.8" r="2.6"><title>18%: 58,716 diamonds on average (1.0 attempts)</title></circle>
-<circle class="ec-dot" cx="263.7" cy="211.8" r="2.6"><title>19%: 58,806 diamonds on average (1.0 attempts)</title></circle>
-<circle class="ec-dot" cx="275.1" cy="211.6" r="2.6"><title>20%: 59,182 diamonds on average (1.0 attempts)</title></circle>
-<circle class="ec-dot" cx="286.6" cy="211.3" r="2.6"><title>21%: 59,933 diamonds on average (1.1 attempts)</title></circle>
-<circle class="ec-dot" cx="298.0" cy="211.2" r="2.6"><title>22%: 60,092 diamonds on average (1.1 attempts)</title></circle>
-<circle class="ec-dot" cx="309.4" cy="210.3" r="2.6"><title>23%: 62,371 diamonds on average (1.1 attempts)</title></circle>
-<circle class="ec-dot" cx="320.9" cy="210.2" r="2.6"><title>24%: 62,597 diamonds on average (1.1 attempts)</title></circle>
-<circle class="ec-dot" cx="332.3" cy="209.1" r="2.6"><title>25%: 65,474 diamonds on average (1.2 attempts)</title></circle>
-<circle class="ec-dot" cx="343.7" cy="208.3" r="2.6"><title>26%: 67,429 diamonds on average (1.2 attempts)</title></circle>
-<circle class="ec-dot" cx="355.1" cy="207.8" r="2.6"><title>27%: 68,978 diamonds on average (1.2 attempts)</title></circle>
-<circle class="ec-dot" cx="366.6" cy="204.9" r="2.6"><title>28%: 77,387 diamonds on average (1.4 attempts)</title></circle>
-<circle class="ec-dot" cx="378.0" cy="204.7" r="2.6"><title>29%: 77,908 diamonds on average (1.4 attempts)</title></circle>
-<circle class="ec-dot" cx="389.4" cy="200.4" r="2.6"><title>30%: 92,699 diamonds on average (1.7 attempts)</title></circle>
-<circle class="ec-dot" cx="400.9" cy="199.9" r="2.6"><title>31%: 94,474 diamonds on average (1.7 attempts)</title></circle>
-<circle class="ec-dot" cx="412.3" cy="197.0" r="2.6"><title>32%: 106,293 diamonds on average (1.9 attempts)</title></circle>
-<circle class="ec-dot" cx="423.7" cy="193.2" r="2.6"><title>33%: 123,794 diamonds on average (2.2 attempts)</title></circle>
-<circle class="ec-dot" cx="435.1" cy="192.3" r="2.6"><title>34%: 128,247 diamonds on average (2.3 attempts)</title></circle>
-<circle class="ec-dot" cx="446.6" cy="182.5" r="2.6"><title>35%: 190,106 diamonds on average (3.4 attempts)</title></circle>
-<circle class="ec-dot" cx="458.0" cy="182.3" r="2.6"><title>36%: 191,510 diamonds on average (3.5 attempts)</title></circle>
-<circle class="ec-dot" cx="469.4" cy="171.8" r="2.6"><title>37%: 290,787 diamonds on average (5.3 attempts)</title></circle>
-<circle class="ec-dot" cx="480.9" cy="170.0" r="2.6"><title>38%: 313,482 diamonds on average (5.7 attempts)</title></circle>
-<circle class="ec-dot" cx="492.3" cy="165.5" r="2.6"><title>39%: 375,586 diamonds on average (6.8 attempts)</title></circle>
-<circle class="ec-dot" cx="503.7" cy="155.1" r="2.6"><title>40%: 568,278 diamonds on average (10.4 attempts)</title></circle>
-<circle class="ec-dot" cx="515.1" cy="154.5" r="2.6"><title>41%: 582,845 diamonds on average (10.7 attempts)</title></circle>
-<circle class="ec-dot" cx="526.6" cy="132.9" r="2.6"><title>42%: 1,382,616 diamonds on average (25.3 attempts)</title></circle>
-<circle class="ec-dot" cx="538.0" cy="132.6" r="2.6"><title>43%: 1,401,899 diamonds on average (25.7 attempts)</title></circle>
-<circle class="ec-dot" cx="549.4" cy="114.0" r="2.6"><title>44%: 2,949,212 diamonds on average (54.1 attempts)</title></circle>
-<circle class="ec-dot" cx="560.9" cy="108.6" r="2.6"><title>45%: 3,663,061 diamonds on average (67.2 attempts)</title></circle>
-<circle class="ec-dot" cx="572.3" cy="104.1" r="2.6"><title>46%: 4,380,313 diamonds on average (80.3 attempts)</title></circle>
-<circle class="ec-dot" cx="595.1" cy="81.4" r="2.6"><title>48%: 10,873,828 diamonds on average (199.3 attempts)</title></circle>
-<circle class="ec-dot" cx="618.0" cy="32.1" r="2.6"><title>50%: 78,250,504 diamonds on average (1434.5 attempts)</title></circle>
+<polyline class="ec-line" points="58.0,216.1 69.4,216.1 80.9,216.1 92.3,216.1 103.7,216.1 115.1,216.1 126.6,216.1 138.0,216.1 149.4,216.1 160.9,216.1 172.3,216.1 183.7,216.1 195.1,216.1 206.6,216.1 218.0,216.1 229.4,216.1 240.9,216.1 252.3,216.0 263.7,216.0 275.1,216.0 286.6,216.0 298.0,216.0 309.4,215.8 320.9,215.8 332.3,215.6 343.7,215.5 355.1,215.4 366.6,214.8 378.0,214.8 389.4,213.7 400.9,213.6 412.3,212.7 423.7,211.8 435.1,211.5 446.6,208.3 458.0,208.2 469.4,203.3 480.9,202.5 492.3,199.8 503.7,193.7 515.1,193.1 526.6,174.9 538.0,174.7 549.4,153.5 560.9,148.0 572.3,142.2 595.1,117.2 618.0,55.4"/>
+<circle class="ec-dot" cx="58.0" cy="216.1" r="2.6"><title>1%: 33,184 diamonds on average (1.0 attempts)</title></circle>
+<circle class="ec-dot" cx="69.4" cy="216.1" r="2.6"><title>2%: 33,184 diamonds on average (1.0 attempts)</title></circle>
+<circle class="ec-dot" cx="80.9" cy="216.1" r="2.6"><title>3%: 33,184 diamonds on average (1.0 attempts)</title></circle>
+<circle class="ec-dot" cx="92.3" cy="216.1" r="2.6"><title>4%: 33,184 diamonds on average (1.0 attempts)</title></circle>
+<circle class="ec-dot" cx="103.7" cy="216.1" r="2.6"><title>5%: 33,184 diamonds on average (1.0 attempts)</title></circle>
+<circle class="ec-dot" cx="115.1" cy="216.1" r="2.6"><title>6%: 33,184 diamonds on average (1.0 attempts)</title></circle>
+<circle class="ec-dot" cx="126.6" cy="216.1" r="2.6"><title>7%: 33,184 diamonds on average (1.0 attempts)</title></circle>
+<circle class="ec-dot" cx="138.0" cy="216.1" r="2.6"><title>8%: 33,185 diamonds on average (1.0 attempts)</title></circle>
+<circle class="ec-dot" cx="149.4" cy="216.1" r="2.6"><title>9%: 33,185 diamonds on average (1.0 attempts)</title></circle>
+<circle class="ec-dot" cx="160.9" cy="216.1" r="2.6"><title>10%: 33,185 diamonds on average (1.0 attempts)</title></circle>
+<circle class="ec-dot" cx="172.3" cy="216.1" r="2.6"><title>11%: 33,185 diamonds on average (1.0 attempts)</title></circle>
+<circle class="ec-dot" cx="183.7" cy="216.1" r="2.6"><title>12%: 33,185 diamonds on average (1.0 attempts)</title></circle>
+<circle class="ec-dot" cx="195.1" cy="216.1" r="2.6"><title>13%: 33,185 diamonds on average (1.0 attempts)</title></circle>
+<circle class="ec-dot" cx="206.6" cy="216.1" r="2.6"><title>14%: 33,185 diamonds on average (1.0 attempts)</title></circle>
+<circle class="ec-dot" cx="218.0" cy="216.1" r="2.6"><title>15%: 33,186 diamonds on average (1.0 attempts)</title></circle>
+<circle class="ec-dot" cx="229.4" cy="216.1" r="2.6"><title>16%: 33,191 diamonds on average (1.0 attempts)</title></circle>
+<circle class="ec-dot" cx="240.9" cy="216.1" r="2.6"><title>17%: 33,192 diamonds on average (1.0 attempts)</title></circle>
+<circle class="ec-dot" cx="252.3" cy="216.0" r="2.6"><title>18%: 33,209 diamonds on average (1.0 attempts)</title></circle>
+<circle class="ec-dot" cx="263.7" cy="216.0" r="2.6"><title>19%: 33,216 diamonds on average (1.0 attempts)</title></circle>
+<circle class="ec-dot" cx="275.1" cy="216.0" r="2.6"><title>20%: 33,240 diamonds on average (1.0 attempts)</title></circle>
+<circle class="ec-dot" cx="286.6" cy="216.0" r="2.6"><title>21%: 33,275 diamonds on average (1.0 attempts)</title></circle>
+<circle class="ec-dot" cx="298.0" cy="216.0" r="2.6"><title>22%: 33,285 diamonds on average (1.0 attempts)</title></circle>
+<circle class="ec-dot" cx="309.4" cy="215.8" r="2.6"><title>23%: 33,424 diamonds on average (1.1 attempts)</title></circle>
+<circle class="ec-dot" cx="320.9" cy="215.8" r="2.6"><title>24%: 33,430 diamonds on average (1.1 attempts)</title></circle>
+<circle class="ec-dot" cx="332.3" cy="215.6" r="2.6"><title>25%: 33,633 diamonds on average (1.1 attempts)</title></circle>
+<circle class="ec-dot" cx="343.7" cy="215.5" r="2.6"><title>26%: 33,738 diamonds on average (1.1 attempts)</title></circle>
+<circle class="ec-dot" cx="355.1" cy="215.4" r="2.6"><title>27%: 33,898 diamonds on average (1.1 attempts)</title></circle>
+<circle class="ec-dot" cx="366.6" cy="214.8" r="2.6"><title>28%: 34,478 diamonds on average (1.2 attempts)</title></circle>
+<circle class="ec-dot" cx="378.0" cy="214.8" r="2.6"><title>29%: 34,513 diamonds on average (1.2 attempts)</title></circle>
+<circle class="ec-dot" cx="389.4" cy="213.7" r="2.6"><title>30%: 35,654 diamonds on average (1.4 attempts)</title></circle>
+<circle class="ec-dot" cx="400.9" cy="213.6" r="2.6"><title>31%: 35,761 diamonds on average (1.4 attempts)</title></circle>
+<circle class="ec-dot" cx="412.3" cy="212.7" r="2.6"><title>32%: 36,742 diamonds on average (1.6 attempts)</title></circle>
+<circle class="ec-dot" cx="423.7" cy="211.8" r="2.6"><title>33%: 37,729 diamonds on average (1.7 attempts)</title></circle>
+<circle class="ec-dot" cx="435.1" cy="211.5" r="2.6"><title>34%: 38,068 diamonds on average (1.8 attempts)</title></circle>
+<circle class="ec-dot" cx="446.6" cy="208.3" r="2.6"><title>35%: 41,921 diamonds on average (2.4 attempts)</title></circle>
+<circle class="ec-dot" cx="458.0" cy="208.2" r="2.6"><title>36%: 42,001 diamonds on average (2.4 attempts)</title></circle>
+<circle class="ec-dot" cx="469.4" cy="203.3" r="2.6"><title>37%: 48,657 diamonds on average (3.6 attempts)</title></circle>
+<circle class="ec-dot" cx="480.9" cy="202.5" r="2.6"><title>38%: 49,802 diamonds on average (3.8 attempts)</title></circle>
+<circle class="ec-dot" cx="492.3" cy="199.8" r="2.6"><title>39%: 54,070 diamonds on average (4.5 attempts)</title></circle>
+<circle class="ec-dot" cx="503.7" cy="193.7" r="2.6"><title>40%: 65,018 diamonds on average (6.3 attempts)</title></circle>
+<circle class="ec-dot" cx="515.1" cy="193.1" r="2.6"><title>41%: 66,202 diamonds on average (6.5 attempts)</title></circle>
+<circle class="ec-dot" cx="526.6" cy="174.9" r="2.6"><title>42%: 114,072 diamonds on average (14.3 attempts)</title></circle>
+<circle class="ec-dot" cx="538.0" cy="174.7" r="2.6"><title>43%: 114,882 diamonds on average (14.4 attempts)</title></circle>
+<circle class="ec-dot" cx="549.4" cy="153.5" r="2.6"><title>44%: 217,472 diamonds on average (30.8 attempts)</title></circle>
+<circle class="ec-dot" cx="560.9" cy="148.0" r="2.6"><title>45%: 256,368 diamonds on average (37.0 attempts)</title></circle>
+<circle class="ec-dot" cx="572.3" cy="142.2" r="2.6"><title>46%: 304,910 diamonds on average (44.8 attempts)</title></circle>
+<circle class="ec-dot" cx="595.1" cy="117.2" r="2.6"><title>48%: 646,141 diamonds on average (99.2 attempts)</title></circle>
+<circle class="ec-dot" cx="618.0" cy="55.4" r="2.6"><title>50%: 4,129,507 diamonds on average (654.8 attempts)</title></circle>
 <line class="ec-axis" x1="58" y1="256" x2="618" y2="256"/>
 <text class="ec-t ec-muted" x="103.7" y="271" text-anchor="middle">5%</text>
 <text class="ec-t ec-muted" x="160.9" y="271" text-anchor="middle">10%</text>
@@ -140,8 +151,8 @@ full 48 marks.
 <text class="ec-t ec-muted" x="560.9" y="271" text-anchor="middle">45%</text>
 <text class="ec-t ec-muted" x="618.0" y="271" text-anchor="middle">50%</text>
 <text class="ec-t ec-muted" x="338.0" y="290" text-anchor="middle">amplification reached (or better)</text>
-<text class="ec-b ec-ink" x="64.0" y="226.0">58.2K</text>
-<text class="ec-b ec-ink" x="612.0" y="24.1" text-anchor="end">78.3M</text>
+<text class="ec-b ec-ink" x="64.0" y="230.1">33.2K</text>
+<text class="ec-b ec-ink" x="612.0" y="47.4" text-anchor="end">4.13M</text>
 </svg>
 
 <sub>Log scale - the range spans three orders of magnitude. The chart needs a
@@ -149,37 +160,39 @@ renderer that keeps inline SVG; the VS Code preview does, GitHub strips it.</sub
 
 ## What this says
 
-**Everything below 35% is close to free**, which is why the table starts there.
-25% costs 65.5K and lands first try
-86% of the time; 30% costs
-92.7K. The real spending starts above that.
+**Everything below 35% costs about the entry fee** - the summons behind the first
+attempt or two, most of them still sitting in part-filled piles - which is why the
+table starts there.
+25% costs 33.6K and lands first try
+92% of the time; 30% costs
+35.7K. The real spending starts above that.
 
 **The multiplier itself keeps growing** - each extra 5 points costs more,
 relative to the step before it, than the last one did:
 
 | step | mean diamonds | multiplier |
 |---|---|---|
-| 35% to 40% | 568K | 3.0x |
-| 40% to 45% | 3.66M | 6.4x |
-| 45% to 50% | 78.3M | 21.4x |
+| 35% to 40% | 65K | 1.6x |
+| 40% to 45% | 256K | 3.9x |
+| 45% to 50% | 4.13M | 16.1x |
 
-**The last 5 points cost 21x everything before them.**
-Getting to 45% averages 3.66M; going from there to a perfect
-50% averages 78.3M, because a perfect relic needs a flawless attempt
-and that happens 0.0689% of the time - once per
-1,434 attempts.
+**The last 5 points cost 16x everything before them.**
+Getting to 45% averages 256K; going from there to a perfect
+50% averages 4.13M, because a perfect relic needs a flawless attempt
+and that happens 0.1530% of the time - once per
+655 attempts.
 
 **The averages hide a very long tail.** The median run reaches 50% for
-54.1M, but the 90th percentile is 180M. First-reach times
+2.85M, but the 90th percentile is 9.54M. First-reach times
 are geometric, so the spread is as wide as the mean: budgeting the average is a
 coin flip, not a plan.
 
 **Where to stop is a judgement call, but 40% is the value corner.**
-568K buys 40%; the next 10 points cost
-138x that again. Put the other way: the
+65K buys 40%; the next 10 points cost
+64x that again. Put the other way: the
 diamonds behind one perfect relic would farm about
-**138 separate relics at 40%**, or
-21 at 45%.
+**64 separate relics at 40%**, or
+16 at 45%.
 
 ## Cross-check
 
@@ -187,22 +200,23 @@ Two independent routes to the same number, which is the reason to trust it:
 
 | | |
 |---|---|
-| simulated mean to 50% | 78,250,504 diamonds |
-| 1,434 attempts x 54,545 per attempt | 78,243,854 diamonds |
-| gap | 0.008% |
+| simulated mean to 50% | 4,129,507 diamonds |
+| 655 attempts x 6,270 per attempt | 4,105,580 diamonds |
+| gap | 0.579% |
 
-The simulated attempt count also matches the geometric expectation: 1,434
-attempts against a predicted 1 / 0.068871% = 1,452.
+The simulated attempt count also matches the geometric expectation: 655
+attempts against a predicted 1 / 0.153047% = 653.
 
 ## Assumptions
 
 1. A summon is 11 **independent** relics, each equally
    likely to be any of the 12 types. No pity, no duplicate
    protection, no banner weighting.
-2. Only crit relics have any value; the other 11 types are
-   discarded. If they are worth something, the true cost per crit relic is lower.
-3. Leftover crit relics carry over between attempts, so nothing is wasted except
-   within the final partial summon.
+2. The other 11 types are only worth their conversion: 10 of
+   one type for 7 crit relics. Each type is converted as soon as
+   10 of it are on hand and is never kept for anything else.
+3. Leftover crits and part-filled piles carry over between attempts, so nothing
+   is wasted except within the final partial summon and the unfilled piles.
 4. Attempts are independent and the relic keeps its best amplification ever
    rolled - an attempt can never make an existing relic worse.
 5. The inheritance itself is played to the solver's optimal weighted policy

@@ -101,3 +101,28 @@ have EVERY relic reach a specific (x,y) requirement
 for now, we can only sim up to level 9
 
 you need to test and analyze multiple approaches to find the minimum cost to reach the maximum level (9 for now), and then the output will also show that strategies intermediate cost for the previous levels
+
+# datamine
+levels 13->20
+13 is +2% glory
+14 -2% despair
+15 has nothing
+16 unlocks 9 slots
+17 +2% glory
+18 -2% glory
+19 nothing
+20 unlocked 10 slots
+
+rememeber we have to already meet the level 20 requirement before actually unlocking the new 10 slots, so 10 slots are never actually used in the level cost calculation.
+
+right now +5% multiplier up to level 7
+then +10% lasts to up to level 15
+then +15% up to 19
+then 20% for level 20
+
+the image has the requirements for each level
+
+remember +160 pity starts at level 12 (trying to level up to 13)
++180 pioty at level 16 (leveling to 17)
+
+finally, add a new table to LEVELS.md which shows the expected average amplification of a single attempt at each level (level 0-20)

@@ -67,6 +67,8 @@ pub enum Objective {
     /// an unfloored score: w_glory a glory success plus w_despair a despair
     /// slot left clean - never negative, so a wipe stays the worst outcome
     Score,
+    /// all or nothing on amplification: maximise P(amplification >= `mark`%)
+    Reach { mark: u8 },
 }
 
 /// An objective plus the amplification weights it is reported in.
@@ -91,6 +93,11 @@ impl Strategy {
         Strategy { objective: Objective::Score, w_glory, w_despair }
     }
 
+    /// All or nothing for an amplification of at least `mark`%, at +5% / -2%.
+    pub fn reach(mark: u8) -> Self {
+        Strategy { objective: Objective::Reach { mark }, w_glory: 5.0, w_despair: 2.0 }
+    }
+
     pub fn with_weights(self, w_glory: f64, w_despair: f64) -> Self {
         Strategy { w_glory, w_despair, ..self }
     }
@@ -103,6 +110,7 @@ impl Strategy {
         use crate::format::general;
         match self.objective {
             Objective::Target { glory, despair } => format!("target ({glory}, {despair})"),
+            Objective::Reach { mark } => format!("reach {mark}%"),
             Objective::Score => {
                 format!("score ({} glory : {} despair)", general(self.w_glory), general(self.w_despair))
             }
@@ -137,23 +145,30 @@ pub struct Config {
     pub safety_first: bool,
     /// extra score charged for a wipe (ignored when safety_first)
     pub wipe_penalty: f64,
+    /// glory slots that start the attempt already filled with a success
+    pub start_glory: u8,
+    /// despair slots that start the attempt already filled with a failure
+    pub start_despair_fail: u8,
 }
 
 impl Config {
-    /// The board at inheritor `level`.  From level 2 the bonuses repeat on a
-    /// four-level cycle: +2% glory, -2% despair, +1 memory slot, +1 spirit power.
+    /// The board at inheritor `level`, every bonus from level 2 up to it added
+    /// in (see `level_bonus`).
     pub fn for_level(level: i64, strategy: Strategy) -> Result<Config, String> {
         if level < 1 {
             return Err(format!("inheritor level {level} is not a real level (1 and up)"));
         }
         let (mut slots, mut max_spirit, mut glory_mod, mut despair_mod) =
             (BASE_SLOTS, BASE_MAX_SPIRIT, 0.0, 0.0);
+        let (mut start_glory, mut start_despair_fail) = (0, 0);
         for lv in 2..=level {
-            match lv % 4 {
-                2 => glory_mod += 0.02,
-                3 => despair_mod += -0.02,
-                0 => slots += 1,
-                _ => max_spirit += 1,
+            match level_bonus(lv) {
+                Bonus::Glory => glory_mod += 0.02,
+                Bonus::Despair => despair_mod += -0.02,
+                Bonus::Slot => slots += 1,
+                Bonus::Spirit => max_spirit += 1,
+                Bonus::StartGlory => start_glory += 1,
+                Bonus::StartDespairFail => start_despair_fail += 1,
             }
         }
         Ok(Config {
@@ -167,6 +182,8 @@ impl Config {
             strategy,
             safety_first: false,
             wipe_penalty: 0.0,
+            start_glory,
+            start_despair_fail,
         })
     }
 
@@ -187,6 +204,38 @@ impl Config {
             Objective::Target { despair, .. } => despair.min(self.slots),
             _ => 0,
         }
+    }
+}
+
+/// What reaching a level adds to the board.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Bonus {
+    /// +2% glory rate
+    Glory,
+    /// -2% despair rate
+    Despair,
+    /// one more memory slot per bar
+    Slot,
+    /// one more spirit power
+    Spirit,
+    /// every attempt starts with one more glory slot filled with a success
+    StartGlory,
+    /// every attempt starts with one more despair slot filled with a failure
+    StartDespairFail,
+}
+
+/// The bonus for reaching `level` (2 and up).  Levels 2-12 cycle glory,
+/// despair, slot, spirit power.  From 13: glory, despair, a glory success to
+/// start with (15), the 9th slot (16), glory, despair, a despair failure to
+/// start with (19), the 10th slot (20).  Past 20 that run of eight is assumed
+/// to repeat.
+pub fn level_bonus(level: i64) -> Bonus {
+    use Bonus::{Despair, Glory, Slot, Spirit, StartDespairFail, StartGlory};
+    if level <= 12 {
+        [Slot, Spirit, Glory, Despair][(level % 4) as usize]
+    } else {
+        [Glory, Despair, StartGlory, Slot, Glory, Despair, StartDespairFail, Slot]
+            [((level - 13) % 8) as usize]
     }
 }
 
@@ -364,7 +413,16 @@ impl Solver {
 
     pub fn start_state(&self) -> State {
         let c = &self.cfg;
-        State { gf: 0, gs: 0, df: 0, ds: 0, ms: c.start_mental(), sp: c.max_spirit, tier: c.start_tier }
+        let (glory, fails) = (c.start_glory, c.start_despair_fail);
+        State {
+            gf: glory,
+            gs: glory,
+            df: fails,
+            ds: 0,
+            ms: c.start_mental(),
+            sp: c.max_spirit,
+            tier: c.start_tier,
+        }
     }
 
     /// Success chance of an action at a tier, after modifiers.
@@ -444,6 +502,9 @@ impl Solver {
                 s.w_glory * f64::from(glory) + s.w_despair * f64::from(self.cfg.slots - despair)
             }
             Objective::Weighted => self.amplification(glory, despair),
+            Objective::Reach { mark } => {
+                f64::from(u8::from(self.amplification(glory, despair) >= f64::from(mark)))
+            }
         }
     }
 

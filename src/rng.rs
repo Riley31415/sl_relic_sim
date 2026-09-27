@@ -2,6 +2,7 @@
 //! SplitMix64.  Every run gets its own stream from (seed, run index), so a
 //! result never depends on how the runs were spread over threads.
 
+#[derive(Clone)]
 pub struct Rng {
     s: [u64; 4],
 }

@@ -104,12 +104,20 @@ fn setup(out: &mut String, cfg: &Config) {
             general(st.w_despair)
         );
     }
-    let short = 2 * i32::from(cfg.slots) - i32::from(cfg.max_spirit);
+    let head_start = [(cfg.start_glory, "glory success"), (cfg.start_despair_fail, "despair failure")]
+        .into_iter()
+        .filter(|&(n, _)| n > 0)
+        .map(|(n, what)| format!("{n} {what}{}", if n == 1 { "" } else { "s" }))
+        .collect::<Vec<_>>();
+    if !head_start.is_empty() {
+        let _ = writeln!(out, "  starts with          : {} already in the bars", head_start.join(", "));
+    }
+    let fills = 2 * i32::from(cfg.slots) - i32::from(cfg.start_glory) - i32::from(cfg.start_despair_fail);
+    let short = fills - i32::from(cfg.max_spirit);
     let need = (short.max(0) + 1) / 2;
     let _ = writeln!(
         out,
-        "  spirit power needed  : {} to complete both bars, {} on hand -> at least {need} successful mental training{} (worth full value at {} spirit power or below)",
-        2 * cfg.slots,
+        "  spirit power needed  : {fills} to complete both bars, {} on hand -> at least {need} successful mental training{} (worth full value at {} spirit power or below)",
         cfg.max_spirit,
         if need == 1 { "" } else { "s" },
         i32::from(cfg.max_spirit) - 2
@@ -553,16 +561,11 @@ pub fn amplification_table(args: &SolveArgs, html: bool) -> Result<String, Strin
     Ok(out)
 }
 
-/// RdYlGn with a LIGHT red at the bottom: most of a joint-probability grid
-/// sits near zero, and a saturated red there reads as a heavy block rather
-/// than as "rare".
-const HEAT_STOPS: [(f64, [f64; 3]); 5] = [
-    (0.00, [247.0, 190.0, 185.0]),
-    (0.25, [252.0, 174.0, 132.0]),
-    (0.50, [255.0, 255.0, 191.0]),
-    (0.75, [166.0, 217.0, 106.0]),
-    (1.00, [26.0, 152.0, 80.0]),
-];
+/// White through light green to deep green: most of a joint-probability grid
+/// sits near zero, so the rare cells stay blank and the likely ones carry
+/// the colour.
+const HEAT_STOPS: [(f64, [f64; 3]); 3] =
+    [(0.00, [255.0, 255.0, 255.0]), (0.50, [166.0, 217.0, 106.0]), (1.00, [26.0, 152.0, 80.0])];
 pub const GLORY_GOLD: [f64; 3] = [212.0, 175.0, 55.0];
 pub const DESPAIR_RED: [f64; 3] = [139.0, 0.0, 0.0];
 /// Table ink is always black: flipping to white over the dark ends would hold
@@ -573,10 +576,10 @@ fn hex(rgb: [f64; 3]) -> String {
     format!("#{:02x}{:02x}{:02x}", rgb[0] as u8, rgb[1] as u8, rgb[2] as u8)
 }
 
-/// The red-to-green scale at `fraction`: (background, text).
+/// The white-to-green scale at `fraction`: (background, text).
 pub fn heat_colour(fraction: f64) -> (String, &'static str) {
     let f = fraction.clamp(0.0, 1.0);
-    let mut rgb = HEAT_STOPS[4].1;
+    let mut rgb = HEAT_STOPS[HEAT_STOPS.len() - 1].1;
     for pair in HEAT_STOPS.windows(2) {
         let ((lo, c_lo), (hi, c_hi)) = (pair[0], pair[1]);
         if f <= hi {

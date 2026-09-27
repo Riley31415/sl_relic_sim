@@ -15,6 +15,8 @@ pub enum TableKey {
     Target { level: u8, glory: u8, despair: Option<u8> },
     /// for a weighted score; weights stored as f64 bits so the key hashes
     Score { level: u8, w_glory: u64, w_despair: u64 },
+    /// all-or-nothing for an amplification of at least `mark`%
+    Reach { level: u8, mark: u8 },
 }
 
 impl TableKey {
@@ -31,6 +33,7 @@ impl TableKey {
             TableKey::Score { level, w_glory, w_despair } => {
                 (level, Strategy::score(f64::from_bits(w_glory), f64::from_bits(w_despair)))
             }
+            TableKey::Reach { level, mark } => (level, Strategy::reach(mark)),
         };
         let cfg = Config::for_level(i64::from(level), strategy).expect("level >= 1");
         let (values, cum) = Solver::new(cfg).analyse(None).outcome_table();

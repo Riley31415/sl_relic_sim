@@ -1,29 +1,35 @@
 //! The diamond cost of farming a crit relic.
 
-use relic::economy::{self, DIAMONDS_PER_SUMMON, RELIC_TYPES, RELICS_PER_SUMMON};
-
-#[test]
-fn one_summon_is_binomial_eleven_twelfths() {
-    let cum = economy::summon_cdf(1);
-    assert!((cum[cum.len() - 1] - 1.0).abs() < 1e-12);
-    let mut prev = 0.0;
-    let mean: f64 = cum
-        .iter()
-        .enumerate()
-        .map(|(k, &c)| {
-            let p = c - prev;
-            prev = c;
-            k as f64 * p
-        })
-        .sum();
-    assert!((mean - f64::from(RELICS_PER_SUMMON) / f64::from(RELIC_TYPES)).abs() < 1e-12);
-}
+use relic::economy::{self, DIAMONDS_PER_SUMMON, Stock};
 
 #[test]
 fn diamonds_per_attempt() {
-    // 10 crit relics at 11/12 per summon, 5000 diamonds a summon
-    assert!((economy::diamonds_per_attempt() - 10.0 / (11.0 / 12.0) * 5000.0).abs() < 1e-6);
-    assert!((economy::diamonds_per_attempt() - 54_545.454_5).abs() < 1e-3);
+    // 11/12 crits a summon, plus 121/12 others converted at 10 for 7
+    let per_summon = 11.0 / 12.0 + 121.0 / 12.0 * 0.7;
+    assert!((economy::crits_per_summon() - per_summon).abs() < 1e-12);
+    assert!((economy::diamonds_per_attempt() - 10.0 / per_summon * 5000.0).abs() < 1e-6);
+    assert!((economy::diamonds_per_attempt() - 6_269.592_5).abs() < 1e-3);
+}
+
+#[test]
+fn ten_of_one_type_convert_to_seven() {
+    let mut stock = Stock::default();
+    for _ in 0..3 {
+        stock.add(0);
+    }
+    // nine each of two types: 18 others, but no full ten of either
+    for _ in 0..9 {
+        stock.add(1);
+        stock.add(2);
+    }
+    assert_eq!(stock.crit_supply(), 3);
+    stock.add(2);
+    assert_eq!(stock.crit_supply(), 10);
+    assert_eq!((stock.others[0], stock.others[1]), (9, 0)); // the full pile is spent
+    for _ in 0..10 {
+        stock.add(11);
+    }
+    assert_eq!(stock.crit_supply(), 17);
 }
 
 #[test]

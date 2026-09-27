@@ -1,7 +1,8 @@
 //! The solver's reports: number formatting, table colours, and golden files.
 //!
 //! The golden files are the reports as the original Python implementation
-//! printed them; the exact solver must reproduce them character for character.
+//! printed them (the level-20 grid re-captured once the level 13-20 bonuses
+//! were known); the exact solver must reproduce them character for character.
 
 use relic::format::pct3;
 use relic::heuristics;
@@ -99,10 +100,10 @@ fn table_ink_is_always_black() {
 }
 
 #[test]
-fn heat_scale_runs_light_red_to_green() {
-    assert_eq!(heat_colour(0.0).0, "#f7beb9"); // light red, not a block
-    assert_eq!(heat_colour(0.5).0, "#ffffbf");
+fn heat_scale_runs_white_to_green() {
+    assert_eq!(heat_colour(0.0).0, "#ffffff"); // a rare cell stays blank
+    assert_eq!(heat_colour(0.5).0, "#a6d96a");
     assert_eq!(heat_colour(1.0).0, "#1a9850");
-    assert_eq!(heat_colour(-1.0).0, "#f7beb9"); // clamped outside 0..1
+    assert_eq!(heat_colour(-1.0).0, "#ffffff"); // clamped outside 0..1
     assert_eq!(heat_colour(2.0).0, "#1a9850");
 }
