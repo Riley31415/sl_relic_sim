@@ -11,7 +11,7 @@ use crate::economy::{
     CONVERT_FROM, CONVERT_TO, DIAMONDS_PER_SUMMON, RELIC_TYPES, RELICS_PER_ATTEMPT, RELICS_PER_SUMMON,
 };
 use crate::format::{amp_pct, commas, human, pct, signed_pct};
-use crate::solver::{Config, Solver, Strategy};
+use crate::solver::{Config, Solver, Strategy, TIERS};
 
 pub const HABITS: &str = "attempt as soon as any relic the quest needs is affordable; use whichever needed relic you hold the most of; keep a result only if it helps";
 
@@ -689,12 +689,12 @@ fn attempt_table() -> Vec<String> {
         String::new(),
         "## One attempt at each level".to_string(),
         String::new(),
-        "The average amplification of a single inheritance attempt made at each inheritor level, played for the most amplification (+5% a glory success, -2% a despair success, floored at 0%). Exact, from the solver, not simulated. Level 1 is the starting board; a level-20 attempt uses the 10th slot, which no level-up ever gets to.".to_string(),
+        "The average amplification of a single inheritance attempt made at each inheritor level, played for the most amplification (+5% a glory success, -2% a despair success, floored at 0%). Exact, from the solver, not simulated. Level 1 is the starting board; a level-20 attempt uses the 10th slot, which no level-up ever gets to. The first rate is the chance the attempt opens on: the level-15 glory success moves it down a step, the level-19 despair failure back up.".to_string(),
         String::new(),
         SMALL_TABLE.to_string(),
         String::new(),
-        "| level | memory slots | spirit power | glory rate | despair rate | starts with | average amplification | best possible | wipe chance |".to_string(),
-        "|---|---|---|---|---|---|---|---|---|".to_string(),
+        "| level | memory slots | spirit power | glory rate | despair rate | starts with | first rate | average amplification | best possible | wipe chance |".to_string(),
+        "|---|---|---|---|---|---|---|---|---|---|".to_string(),
     ];
     for level in 1..=MAX_LEVEL {
         let cfg = Config::for_level(level as i64, Strategy::default()).expect("level >= 1");
@@ -706,12 +706,13 @@ fn attempt_table() -> Vec<String> {
             .map(|(n, what)| format!("{n} {what}"))
             .collect::<Vec<_>>();
         out.push(format!(
-            "| **{level}** | {} | {} | {} | {} | {} | **{:.2}%** | {} | {} |",
+            "| **{level}** | {} | {} | {} | {} | {} | {} | **{:.2}%** | {} | {} |",
             cfg.slots,
             cfg.max_spirit,
             signed_pct(cfg.glory_mod),
             signed_pct(cfg.despair_mod),
             if head_start.is_empty() { "-".to_string() } else { head_start.join(", ") },
+            pct(TIERS[usize::from(cfg.start_tier)], 0),
             a.e_amplification,
             amp_pct(solver.max_amplification(), 0),
             pct(a.p_dead_end, 2)

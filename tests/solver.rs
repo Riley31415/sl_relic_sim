@@ -89,6 +89,11 @@ fn level_15_and_19_start_the_bars_partly_filled() {
     assert_eq!((level(20).start_glory, level(20).start_despair_fail), (1, 1));
     let start = Solver::new(level(19)).start_state();
     assert_eq!((start.gf, start.gs, start.df, start.ds), (1, 1, 1, 0));
+    // the glory success moves the ladder down a tier, the despair failure back up
+    for (lv, tier) in [(14, BEST_TIER), (15, 1), (18, 1), (19, BEST_TIER), (20, BEST_TIER)] {
+        assert_eq!(level(lv).start_tier, tier, "level {lv}");
+    }
+    assert_eq!(TIERS[usize::from(level(15).start_tier)], 0.65);
     // a head start only ever helps
     let (before, after) = (Solver::new(level(14)).analyse(None), Solver::new(level(15)).analyse(None));
     assert!(after.e_amplification > before.e_amplification);

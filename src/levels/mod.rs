@@ -537,9 +537,9 @@ pub fn strategies() -> Vec<(&'static str, Plan)> {
                 (15, total(Repair).with_filler((4, 2))),
                 (16, total(Repair).with_filler((4, 2))),
                 (17, total(Repair).with_filler((4, 1))),
-                (18, total(Repair).with_filler((4, 1))),
+                (18, total(Repair).with_filler((4, 2))),
                 (19, StepChoice::build(Repair).closer().with_filler((4, 2))),
-                (20, total(Repair).with_filler((4, 1))),
+                (20, total(Repair).with_filler((4, 2))),
             ]),
         ),
         // 4/2 everywhere, all-or-nothing, summon whenever stuck

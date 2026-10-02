@@ -178,7 +178,9 @@ impl Config {
             glory_mod,
             despair_mod,
             train_mod: 0.0,
-            start_tier: BEST_TIER,
+            // the head starts move the chance ladder like real results: a
+            // success one tier harder, a failure one tier easier
+            start_tier: (BEST_TIER + start_glory).min(WORST_TIER).saturating_sub(start_despair_fail),
             strategy,
             safety_first: false,
             wipe_penalty: 0.0,

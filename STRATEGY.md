@@ -22,32 +22,38 @@ relic levels --strategy lookahead   # the whole climb, level by level
 
 ## The board from level 12 to 20
 
-| level | memory slots | spirit power | glory rate | despair rate | starts with | average amplification | per slot | wipe chance |
-|---|---|---|---|---|---|---|---|---|
-| 12 | 8 | 10 | +6% | -6% | - | 23.14% | 57.8% | 2.55% |
-| 13 | 8 | 10 | +8% | -6% | - | 23.73% | 59.3% | 2.60% |
-| 14 | 8 | 10 | +8% | -8% | - | 24.09% | 60.2% | 2.44% |
-| 15 | 8 | 10 | +8% | -8% | 1 glory success | 25.67% | 64.2% | 2.09% |
-| 16 | 9 | 10 | +8% | -8% | 1 glory success | 27.49% | 61.1% | 4.18% |
-| 17 | 9 | 10 | +10% | -8% | 1 glory success | 28.06% | 62.4% | 4.20% |
-| 18 | 9 | 10 | +10% | -10% | 1 glory success | 28.50% | 63.3% | 4.01% |
-| 19 | 9 | 10 | +10% | -10% | 1 glory success, 1 despair fail | 30.74% | 68.3% | 0.98% |
-| 20 | 10 | 10 | +10% | -10% | 1 glory success, 1 despair fail | 33.10% | 66.2% | 2.25% |
+| level | memory slots | spirit power | glory rate | despair rate | starts with | first rate | average amplification | per slot | wipe chance |
+|---|---|---|---|---|---|---|---|---|---|
+| 12 | 8 | 10 | +6% | -6% | - | 80% | 23.14% | 57.8% | 2.55% |
+| 13 | 8 | 10 | +8% | -6% | - | 80% | 23.73% | 59.3% | 2.60% |
+| 14 | 8 | 10 | +8% | -8% | - | 80% | 24.09% | 60.2% | 2.44% |
+| 15 | 8 | 10 | +8% | -8% | 1 glory success | 65% | 24.55% | 61.4% | 2.48% |
+| 16 | 9 | 10 | +8% | -8% | 1 glory success | 65% | 26.23% | 58.3% | 4.49% |
+| 17 | 9 | 10 | +10% | -8% | 1 glory success | 65% | 26.77% | 59.5% | 4.35% |
+| 18 | 9 | 10 | +10% | -10% | 1 glory success | 65% | 27.24% | 60.5% | 4.32% |
+| 19 | 9 | 10 | +10% | -10% | 1 glory success, 1 despair fail | 80% | 30.74% | 68.3% | 0.98% |
+| 20 | 10 | 10 | +10% | -10% | 1 glory success, 1 despair fail | 80% | 33.10% | 66.2% | 2.25% |
 
-"Average amplification" is one attempt played for the most amplification (+5%
-a glory success, -2% a despair success, floored at 0%); "per slot" is that as a
-share of a perfect bar.
+"First rate" is the chance the attempt opens on. "Average amplification" is one
+attempt played for the most amplification (+5% a glory success, -2% a despair
+success, floored at 0%); "per slot" is that as a share of a perfect bar.
 
 Two kinds of level shape the late boards:
 
 - **Slots cost fuel.** Spirit power stops growing at level 9, so every slot
   added after that has to be paid for with mental training. The wipe chance
   jumps at levels 16 and 20, the two levels that add a slot.
-- **Head starts save fuel.** From level 15 every attempt starts with one glory
-  slot already a success, and from level 19 one despair slot already a
-  failure. Each is a slot that costs no spirit power and cannot go wrong, so
-  level 19 is the best board below 20: 16 fills against 10 spirit power, only
-  3 successful trainings needed, and a wipe in 1 attempt in 100.
+- **Head starts save fuel, but move the rate like real results.** From level
+  15 every attempt starts with one glory slot already a success, and from
+  level 19 one despair slot already a failure. Each is a slot that costs no
+  spirit power and cannot go wrong - but a success makes the next action
+  harder, so levels 15-18 open at 65% instead of 80%. The despair failure at
+  19 moves it back up to 80%. That opening step down takes back much of what
+  the free glory slot gives: level 15 is only 0.46 points better than level
+  14, and levels 16-18 wipe more than any other late board (4.3-4.5%).
+  Level 19 gets both halves and is the best board below 20: 16 fills against
+  10 spirit power, only 3 successful trainings needed, an 80% start, and a
+  wipe in 1 attempt in 100.
 
 ## What each late level-up asks of an attempt
 
@@ -63,26 +69,30 @@ steps like this:
 | 13 | Mermaid Tear, Sky Eye, Mountain Crown at 7+ / 2- | **all or nothing** for 7+ / 2-: lands 14.1% of the time on the level-12 board | 380K | 5% |
 | 14 | 80 / 20 in total | **max glory + min despair**, repairing the board | 2.7K | 20% |
 | 15 | 83 / 20 | max glory + min despair | 18K | 27% |
-| 16 | 85 / 20 | max glory + min despair | 30K | 11% |
-| 17 | 89 / 21 | max glory + min despair | 43K | 9% |
-| 18 | 91 / 20 | max glory + min despair | 49K | 7% |
-| 19 | 94 / 19 | **all or nothing** for the one-step repair bar | 96K | 24% |
-| 20 | 96 / 16 | all or nothing for the one-step repair bar | 139K | 37% |
+| 16 | 85 / 20 | max glory + min despair | 40K | 24% |
+| 17 | 89 / 21 | max glory + min despair | 65K | 24% |
+| 18 | 91 / 20 | max glory + min despair | 71K | 15% |
+| 19 | 94 / 19 | **all or nothing** for the one-step repair bar | 127K | 42% |
+| 20 | 96 / 16 | all or nothing for the one-step repair bar | 149K | 37% |
 
 Three habits carry the late climb:
 
 - **Level 13 is where to spend.** It is the only late level that names relics,
   and 7 glory with at most 2 despair on an 8-slot board is a 1-in-7 shot. Put
   no stock into filler during it: everything left over is what makes levels
-  14-16 nearly free.
+  14 and 15 nearly free.
 - **Levels 14-18 are repairs, not rebuilds.** The board already sits near each
   total; ask each relic for one step (shed a despair if the budget is blown,
   otherwise add a glory), play the attempt for max glory and min despair, and
   keep any roll that closes the gap even if it is not better on both bars.
+  Levels 16-18 cost more than they look because their attempts are made on
+  the 65%-start boards of levels 15-17, the weakest late boards per slot.
 - **Levels 19 and 20 tighten despair** (19, then 16) while still asking for
   more glory. Play each attempt all or nothing for the single step that relic
-  is being asked for. The head starts make these attempts land far more often
-  than they used to: most runs now finish both by the quest, not by pity.
+  is being asked for. Level 19 is reached with attempts on the level-18 board,
+  which opens at 65%; level 20 with attempts on the level-19 board, back at
+  80% and the best board in the climb. About 4 runs in 10 still finish level
+  19 by pity, and a little over a third finish level 20 that way.
 
 ## Playing one attempt on a 9-slot board (levels 16-18)
 
@@ -90,25 +100,28 @@ Optimal play at level 16:
 
 | | |
 |---|---|
-| glory successes | 6.60 of 9 (one of them free) |
-| despair successes | 2.76 of 9 (lower is better) |
-| amplification | **27.49%** of a possible 45% |
-| wipe | 4.18% |
-| mental training | 8.7 of the 9 available |
+| glory successes | 6.32 of 9 (one of them free) |
+| despair successes | 2.69 of 9 (lower is better) |
+| amplification | **26.23%** of a possible 45% |
+| wipe | 4.49% |
+| mental training | 8.8 of the 9 available |
+| first rate | 65% (the free glory success counts as a success) |
 
 **The fuel math decides everything.** With the free glory success, both bars
 need 17 fills and you start with 10 spirit power, so at least 4 of your 9
-mental trainings must succeed. Optimal play spends almost all of them.
+mental trainings must succeed. Optimal play spends almost all of them. The
+attempt also opens at 65%, not 80%: still a glory rate, but optimal play
+trains there a third of the time to climb back to 80%.
 
 What it actually does, share of decisions at each rate:
 
 | rate | attempt glory | attempt despair | mental training |
 |---|---|---|---|
-| 80% | **70%** | 5% | 25% |
-| 65% | **56%** | 5% | 39% |
-| 50% | 11% | 37% | **52%** |
-| 35% | 6% | **82%** | 12% |
-| 20% | 13% | **74%** | 13% |
+| 80% | **59%** | 7% | 33% |
+| 65% | **61%** | 4% | 35% |
+| 50% | 16% | 33% | **51%** |
+| 35% | 6% | **80%** | 14% |
+| 20% | 15% | **72%** | 13% |
 
 The two bars are opposites - a glory success is good, a despair success is bad -
 so the good rates go to glory and the bad rates to despair. The middle rate is
@@ -131,34 +144,35 @@ Scored exactly against the optimum:
 
 | level | the rule | optimal | gap | wipe (rule) |
 |---|---|---|---|---|
-| 16 | 26.33% | 27.49% | -1.16 | 3.82% |
+| 16 | 24.98% | 26.23% | -1.25 | 3.63% |
 | 19 | 29.24% | 30.74% | -1.50 | 0.35% |
 | 20 | 31.50% | 33.10% | -1.60 | 1.32% |
 
-About 1.2-1.6 points short of perfect play, and it wipes less than the optimum
-on every one of these boards. The one clause not to change is the fuel gate. At
-level 16, training at 50% or better is best; never training wipes 12.3% of
-attempts, and training at any rate still wipes 8.0% because a 20% training
+About 1.25-1.6 points short of perfect play, and it wipes less than the
+optimum on every one of these boards. The one clause not to change is the fuel
+gate. At level 16, training at 50% or better is best; never training wipes 14.8%
+of attempts, and training at any rate still wipes 9.1% because a 20% training
 fails four times in five.
 
 | mental training at | amplification | wipe |
 |---|---|---|
-| never | 24.65% | 12.27% |
-| 80% or better | 24.32% | 10.20% |
-| 65% or better | 24.97% | 4.61% |
-| **50% or better** | **26.33%** | **3.82%** |
-| 35% or better | 25.64% | 6.66% |
-| any rate | 25.26% | 7.97% |
+| never | 22.79% | 14.79% |
+| 80% or better | 22.52% | 12.81% |
+| 65% or better | 23.45% | 5.64% |
+| **50% or better** | **24.98%** | **3.63%** |
+| 35% or better | 24.13% | 7.53% |
+| any rate | 23.72% | 9.09% |
 
 The same rule works on the 8-slot boards (levels 12-15), where only 3
-successful trainings are needed and wipes are rarer (about 2-2.6%).
+successful trainings are needed and wipes are rarer (about 2.4-2.6%).
 
 ### Dodging the wipe
 
 The optimum already accepts a small wipe chance because a wipe only costs the
 floor (0%). Charging a wipe extra buys safety cheaply at first: at level 16 a
-penalty of 10 cuts the wipe from 4.18% to 3.47% for 0.04 points of
-amplification. Driving it as low as the rules allow (1.58%) costs 8.1 points.
+penalty of 10 cuts the wipe from 4.49% to 3.96% for 0.03 points of
+amplification, and a penalty of 30 gets it to 2.86% for 0.23 points. Driving
+it as low as the rules allow (1.69%) costs 6.7 points.
 
 ## Level 20: the 10th slot
 
@@ -303,4 +317,6 @@ them.</sub>
    an attempt that runs dry (a wipe) inherits nothing.
 4. The chance ladder is 80 / 65 / 50 / 35 / 20%, starting at 80%; a success
    moves one step down (harder), a failure one step up. The head-start slots
-   do not move it.
+   move it the same way before the first action: the level-15 glory success
+   puts levels 15-18 at 65%, and the level-19 despair failure brings 19 and 20
+   back to 80%.

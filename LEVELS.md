@@ -29,22 +29,22 @@ Every level-up made as cheap as it can be on its own, ignoring later levels. Pas
 | **13** | Mermaid Tear, Sky Eye, Mountain Crown: 7+ / 2- | 972,944 | 164K | 88% | 28.83% | 28.80% | +140.9% | +6.6% |
 | **14** | all twelve together: 80+ / 20- (totals) | 1,071,186 | 98.2K | 15% | 30.24% | 30.20% | +156.3% | +6.4% |
 | **15** | all twelve together: 83+ / 20- (totals) | 1,192,718 | 122K | 22% | 31.41% | 31.38% | +171.5% | +5.9% |
-| **16** | all twelve together: 85+ / 20- (totals) | 1,284,473 | 91.8K | 8% | 32.31% | 32.30% | +192.8% | +7.9% |
-| **17** | all twelve together: 89+ / 21- (totals) | 1,383,661 | 99.2K | 7% | 33.85% | 33.80% | +215.8% | +7.9% |
-| **18** | all twelve together: 91+ / 20- (totals) | 1,470,039 | 86.4K | 6% | 34.78% | 34.77% | +237.9% | +7.0% |
-| **19** | all twelve together: 94+ / 19- (totals) | 1,612,174 | 142K | 23% | 36.04% | 36.03% | +261.0% | +6.8% |
-| **20** | all twelve together: 96+ / 16- (totals) | 1,775,998 | 164K | 29% | 37.73% | 37.35% | +292.4% | +8.7% |
-| **20 + 43%** | Demon Eye 43%+ | 1,847,412 | 71.4K | - | 44.42% | 37.35% | +308.5% | +4.1% |
-| **20 + 46%** | Demon Eye 46%+ | 2,004,997 | 229K | - | 46.87% | 37.35% | +314.4% | +5.6% |
-| **20 + 48%** | Demon Eye 48%+ | 2,350,424 | 574K | - | 48.26% | 37.35% | +317.8% | +6.5% |
-| **20 + 50%** | Demon Eye 50%+ | 5,717,030 | 3.94M | - | 50.00% | 37.35% | +322.0% | +7.5% |
+| **16** | all twelve together: 85+ / 20- (totals) | 1,312,214 | 119K | 20% | 32.30% | 32.30% | +192.8% | +7.9% |
+| **17** | all twelve together: 89+ / 21- (totals) | 1,444,202 | 132K | 21% | 33.83% | 33.81% | +215.8% | +7.9% |
+| **18** | all twelve together: 91+ / 20- (totals) | 1,554,602 | 110K | 14% | 34.78% | 34.78% | +237.9% | +7.0% |
+| **19** | all twelve together: 94+ / 19- (totals) | 1,723,162 | 169K | 40% | 35.97% | 35.94% | +260.8% | +6.8% |
+| **20** | all twelve together: 96+ / 16- (totals) | 1,885,414 | 162K | 29% | 37.68% | 37.31% | +292.2% | +8.7% |
+| **20 + 43%** | Demon Eye 43%+ | 1,959,192 | 73.8K | - | 44.41% | 37.31% | +308.5% | +4.1% |
+| **20 + 46%** | Demon Eye 46%+ | 2,115,633 | 230K | - | 46.87% | 37.31% | +314.4% | +5.7% |
+| **20 + 48%** | Demon Eye 48%+ | 2,452,820 | 567K | - | 48.25% | 37.31% | +317.7% | +6.5% |
+| **20 + 50%** | Demon Eye 50%+ | 5,831,914 | 3.95M | - | 50.00% | 37.31% | +321.9% | +7.6% |
 
 </div>
 
 <div style="display:flex;flex-wrap:wrap;gap:12px">
 <svg viewBox="0 0 698 334" width="698" height="334" role="img" xmlns="http://www.w3.org/2000/svg" aria-label="Greedy mode: damage for diamonds">
 <title>Greedy mode: damage for diamonds</title>
-<desc>Each level as a bar at its average total diamonds, as tall as its damage increase on a log axis: level 20, crit relic 50% at 5.72M for +322%.</desc>
+<desc>Each level as a bar at its average total diamonds, as tall as its damage increase on a log axis: level 20, crit relic 50% at 5.83M for +322%.</desc>
 <style>.lv-bar{fill:#2a78d6;stroke:#ffffff;stroke-width:0.5}.lv-grid{stroke:#e1e0d9;stroke-width:1}.lv-axis{stroke:#c3c2b7;stroke-width:1;fill:none}.lv-ink{fill:#52514e}.lv-muted{fill:#898781}.lv-eff{stroke:#7b3fb8;stroke-width:2;fill:none}.lv-effdot{fill:#7b3fb8}.lv-ref{stroke:#e0b000;stroke-width:2;stroke-dasharray:5 4}.lv-reft{fill:#9a7700}.lv-halo{paint-order:stroke;stroke:#ffffff;stroke-width:3px;stroke-linejoin:round}.lv-t{font:11px system-ui,-apple-system,'Segoe UI',sans-serif}.lv-s{font:10px system-ui,-apple-system,'Segoe UI',sans-serif}.lv-b{font:600 11px system-ui,-apple-system,'Segoe UI',sans-serif}@media(prefers-color-scheme:dark){.lv-bar{fill:#3987e5;stroke:#1f1f1e}.lv-grid{stroke:#2c2c2a}.lv-axis{stroke:#383835}.lv-ink{fill:#c3c2b7}.lv-eff{stroke:#b287e8}.lv-effdot{fill:#b287e8}.lv-ref{stroke:#f2c94c}.lv-reft{fill:#f2c94c}.lv-halo{stroke:#1f1f1e}}</style>
 <line class="lv-grid" x1="58.0" y1="290.0" x2="604.0" y2="290.0"/>
 <line class="lv-grid" x1="622.0" y1="290.0" x2="678.0" y2="290.0"/>
@@ -90,61 +90,59 @@ Every level-up made as cheap as it can be on its own, ignoring later levels. Pas
 <text class="lv-t lv-muted" x="50" y="44.0" text-anchor="end">+340%</text>
 <text class="lv-t lv-muted" x="50" y="28" text-anchor="end">log dmg</text>
 <text class="lv-t lv-muted" x="58.0" y="305" text-anchor="middle">0</text>
-<text class="lv-t lv-muted" x="167.2" y="305" text-anchor="middle">500K</text>
-<text class="lv-t lv-muted" x="276.4" y="305" text-anchor="middle">1M</text>
-<text class="lv-t lv-muted" x="385.6" y="305" text-anchor="middle">1.5M</text>
-<text class="lv-t lv-muted" x="494.8" y="305" text-anchor="middle">2M</text>
-<text class="lv-t lv-muted" x="604.0" y="305" text-anchor="middle">2.5M</text>
+<text class="lv-t lv-muted" x="240.0" y="305" text-anchor="middle">1M</text>
+<text class="lv-t lv-muted" x="422.0" y="305" text-anchor="middle">2M</text>
+<text class="lv-t lv-muted" x="604.0" y="305" text-anchor="middle">3M</text>
 <line class="lv-axis" x1="58.0" y1="290" x2="604.0" y2="290"/>
 <line class="lv-axis" x1="622.0" y1="290" x2="678.0" y2="290"/>
 <polyline class="lv-axis" points="604.0,290.0 607.0,286.0 610.0,294.0 613.0,286.0 616.0,294.0 619.0,286.0 622.0,290.0"/>
-<text class="lv-t lv-muted" x="650.0" y="305" text-anchor="middle">5.72M</text>
+<text class="lv-t lv-muted" x="650.0" y="305" text-anchor="middle">5.83M</text>
 <text class="lv-t lv-muted" x="368.0" y="326" text-anchor="middle">average diamonds spent (axis broken before the last bar)</text>
-<rect class="lv-bar" x="65.3" y="277.7" width="6" height="12.3"><title>level 2: 47,235 diamonds, +7.6% dmg</title></rect>
-<rect class="lv-bar" x="73.0" y="259.7" width="6" height="30.3"><title>level 3: 82,345 diamonds, +19.7% dmg</title></rect>
-<rect class="lv-bar" x="74.9" y="250.5" width="6" height="39.5"><title>level 4: 90,915 diamonds, +26.4% dmg</title></rect>
-<rect class="lv-bar" x="91.3" y="235.9" width="6" height="54.1"><title>level 5: 166,374 diamonds, +37.8% dmg</title></rect>
-<rect class="lv-bar" x="95.8" y="227.3" width="6" height="62.7"><title>level 6: 186,820 diamonds, +45.0% dmg</title></rect>
-<rect class="lv-bar" x="115.0" y="216.9" width="6" height="73.1"><title>level 7: 274,759 diamonds, +54.3% dmg</title></rect>
-<rect class="lv-bar" x="133.5" y="202.2" width="6" height="87.8"><title>level 8: 359,628 diamonds, +68.3% dmg</title></rect>
-<rect class="lv-bar" x="161.0" y="188.4" width="6" height="101.6"><title>level 9: 485,331 diamonds, +82.6% dmg</title></rect>
-<rect class="lv-bar" x="180.2" y="175.3" width="6" height="114.7"><title>level 10: 573,317 diamonds, +97.3% dmg</title></rect>
-<rect class="lv-bar" x="204.6" y="163.4" width="6" height="126.6"><title>level 11: 685,147 diamonds, +111.7% dmg</title></rect>
-<rect class="lv-bar" x="231.7" y="152.5" width="6" height="137.5"><title>level 12: 808,948 diamonds, +125.9% dmg</title></rect>
-<rect class="lv-bar" x="267.5" y="141.6" width="6" height="148.4"><title>level 13: 972,944 diamonds, +140.9% dmg</title></rect>
-<rect class="lv-bar" x="288.9" y="131.2" width="6" height="158.8"><title>level 14: 1,071,186 diamonds, +156.3% dmg</title></rect>
-<rect class="lv-bar" x="315.5" y="121.5" width="6" height="168.5"><title>level 15: 1,192,718 diamonds, +171.5% dmg</title></rect>
-<rect class="lv-bar" x="335.5" y="108.7" width="6" height="181.3"><title>level 16: 1,284,473 diamonds, +192.8% dmg</title></rect>
-<rect class="lv-bar" x="357.2" y="95.9" width="6" height="194.1"><title>level 17: 1,383,661 diamonds, +215.8% dmg</title></rect>
-<rect class="lv-bar" x="376.1" y="84.6" width="6" height="205.4"><title>level 18: 1,470,039 diamonds, +237.9% dmg</title></rect>
-<rect class="lv-bar" x="407.1" y="73.4" width="6" height="216.6"><title>level 19: 1,612,174 diamonds, +261.0% dmg</title></rect>
-<rect class="lv-bar" x="442.9" y="59.3" width="6" height="230.7"><title>level 20: 1,775,998 diamonds, +292.4% dmg</title></rect>
-<rect class="lv-bar" x="458.5" y="52.5" width="6" height="237.5"><title>level 20, crit relic 43%: 1,847,412 diamonds, +308.5% dmg</title></rect>
-<rect class="lv-bar" x="492.9" y="50.1" width="6" height="239.9"><title>level 20, crit relic 46%: 2,004,997 diamonds, +314.4% dmg</title></rect>
-<rect class="lv-bar" x="568.3" y="48.8" width="6" height="241.2"><title>level 20, crit relic 48%: 2,350,424 diamonds, +317.8% dmg</title></rect>
-<rect class="lv-bar" x="647.0" y="47.1" width="6" height="242.9"><title>level 20, crit relic 50%: 5,717,030 diamonds, +322.0% dmg</title></rect>
-<text class="lv-s lv-ink lv-halo" x="68.3" y="272.7" text-anchor="middle">L2</text>
-<text class="lv-s lv-ink lv-halo" x="76.0" y="254.7" text-anchor="middle">L3</text>
-<text class="lv-s lv-ink lv-halo" x="77.9" y="245.5" text-anchor="middle">L4</text>
-<text class="lv-s lv-ink lv-halo" x="94.3" y="230.9" text-anchor="middle">L5</text>
-<text class="lv-s lv-ink lv-halo" x="98.8" y="222.3" text-anchor="middle">L6</text>
-<text class="lv-s lv-ink lv-halo" x="118.0" y="211.9" text-anchor="middle">L7</text>
-<text class="lv-s lv-ink lv-halo" x="136.5" y="197.2" text-anchor="middle">L8</text>
-<text class="lv-s lv-ink lv-halo" x="164.0" y="183.4" text-anchor="middle">L9</text>
-<text class="lv-s lv-ink lv-halo" x="183.2" y="170.3" text-anchor="middle">L10</text>
-<text class="lv-s lv-ink lv-halo" x="207.6" y="158.4" text-anchor="middle">L11</text>
-<text class="lv-s lv-ink lv-halo" x="234.7" y="147.5" text-anchor="middle">L12</text>
-<text class="lv-s lv-ink lv-halo" x="270.5" y="136.6" text-anchor="middle">L13</text>
-<text class="lv-s lv-ink lv-halo" x="291.9" y="126.2" text-anchor="middle">L14</text>
-<text class="lv-s lv-ink lv-halo" x="318.5" y="116.5" text-anchor="middle">L15</text>
-<text class="lv-s lv-ink lv-halo" x="338.5" y="103.7" text-anchor="middle">L16</text>
-<text class="lv-s lv-ink lv-halo" x="360.2" y="90.9" text-anchor="middle">L17</text>
-<text class="lv-s lv-ink lv-halo" x="379.1" y="79.6" text-anchor="middle">L18</text>
-<text class="lv-s lv-ink lv-halo" x="410.1" y="68.4" text-anchor="middle">L19</text>
-<text class="lv-s lv-ink lv-halo" x="445.9" y="54.3" text-anchor="middle">L20</text>
-<text class="lv-s lv-ink lv-halo" x="461.5" y="47.5" text-anchor="middle">43%</text>
-<text class="lv-s lv-ink lv-halo" x="495.9" y="45.1" text-anchor="middle">46%</text>
-<text class="lv-s lv-ink lv-halo" x="571.3" y="43.8" text-anchor="middle">48%</text>
+<rect class="lv-bar" x="63.6" y="277.7" width="6" height="12.3"><title>level 2: 47,235 diamonds, +7.6% dmg</title></rect>
+<rect class="lv-bar" x="70.0" y="259.7" width="6" height="30.3"><title>level 3: 82,345 diamonds, +19.7% dmg</title></rect>
+<rect class="lv-bar" x="71.5" y="250.5" width="6" height="39.5"><title>level 4: 90,915 diamonds, +26.4% dmg</title></rect>
+<rect class="lv-bar" x="85.3" y="235.9" width="6" height="54.1"><title>level 5: 166,374 diamonds, +37.8% dmg</title></rect>
+<rect class="lv-bar" x="89.0" y="227.3" width="6" height="62.7"><title>level 6: 186,820 diamonds, +45.0% dmg</title></rect>
+<rect class="lv-bar" x="105.0" y="216.9" width="6" height="73.1"><title>level 7: 274,759 diamonds, +54.3% dmg</title></rect>
+<rect class="lv-bar" x="120.5" y="202.2" width="6" height="87.8"><title>level 8: 359,628 diamonds, +68.3% dmg</title></rect>
+<rect class="lv-bar" x="143.3" y="188.4" width="6" height="101.6"><title>level 9: 485,331 diamonds, +82.6% dmg</title></rect>
+<rect class="lv-bar" x="159.3" y="175.3" width="6" height="114.7"><title>level 10: 573,317 diamonds, +97.3% dmg</title></rect>
+<rect class="lv-bar" x="179.7" y="163.4" width="6" height="126.6"><title>level 11: 685,147 diamonds, +111.7% dmg</title></rect>
+<rect class="lv-bar" x="202.2" y="152.5" width="6" height="137.5"><title>level 12: 808,948 diamonds, +125.9% dmg</title></rect>
+<rect class="lv-bar" x="232.1" y="141.6" width="6" height="148.4"><title>level 13: 972,944 diamonds, +140.9% dmg</title></rect>
+<rect class="lv-bar" x="250.0" y="131.2" width="6" height="158.8"><title>level 14: 1,071,186 diamonds, +156.3% dmg</title></rect>
+<rect class="lv-bar" x="272.1" y="121.5" width="6" height="168.5"><title>level 15: 1,192,718 diamonds, +171.5% dmg</title></rect>
+<rect class="lv-bar" x="293.8" y="108.7" width="6" height="181.3"><title>level 16: 1,312,214 diamonds, +192.8% dmg</title></rect>
+<rect class="lv-bar" x="317.8" y="96.0" width="6" height="194.0"><title>level 17: 1,444,202 diamonds, +215.8% dmg</title></rect>
+<rect class="lv-bar" x="337.9" y="84.6" width="6" height="205.4"><title>level 18: 1,554,602 diamonds, +237.9% dmg</title></rect>
+<rect class="lv-bar" x="368.6" y="73.5" width="6" height="216.5"><title>level 19: 1,723,162 diamonds, +260.8% dmg</title></rect>
+<rect class="lv-bar" x="398.1" y="59.4" width="6" height="230.6"><title>level 20: 1,885,414 diamonds, +292.2% dmg</title></rect>
+<rect class="lv-bar" x="411.6" y="52.5" width="6" height="237.5"><title>level 20, crit relic 43%: 1,959,192 diamonds, +308.5% dmg</title></rect>
+<rect class="lv-bar" x="440.0" y="50.1" width="6" height="239.9"><title>level 20, crit relic 46%: 2,115,633 diamonds, +314.4% dmg</title></rect>
+<rect class="lv-bar" x="501.4" y="48.8" width="6" height="241.2"><title>level 20, crit relic 48%: 2,452,820 diamonds, +317.7% dmg</title></rect>
+<rect class="lv-bar" x="647.0" y="47.1" width="6" height="242.9"><title>level 20, crit relic 50%: 5,831,914 diamonds, +321.9% dmg</title></rect>
+<text class="lv-s lv-ink lv-halo" x="66.6" y="272.7" text-anchor="middle">L2</text>
+<text class="lv-s lv-ink lv-halo" x="73.0" y="254.7" text-anchor="middle">L3</text>
+<text class="lv-s lv-ink lv-halo" x="74.5" y="245.5" text-anchor="middle">L4</text>
+<text class="lv-s lv-ink lv-halo" x="88.3" y="230.9" text-anchor="middle">L5</text>
+<text class="lv-s lv-ink lv-halo" x="92.0" y="222.3" text-anchor="middle">L6</text>
+<text class="lv-s lv-ink lv-halo" x="108.0" y="211.9" text-anchor="middle">L7</text>
+<text class="lv-s lv-ink lv-halo" x="123.5" y="197.2" text-anchor="middle">L8</text>
+<text class="lv-s lv-ink lv-halo" x="146.3" y="183.4" text-anchor="middle">L9</text>
+<text class="lv-s lv-ink lv-halo" x="162.3" y="170.3" text-anchor="middle">L10</text>
+<text class="lv-s lv-ink lv-halo" x="182.7" y="158.4" text-anchor="middle">L11</text>
+<text class="lv-s lv-ink lv-halo" x="205.2" y="147.5" text-anchor="middle">L12</text>
+<text class="lv-s lv-ink lv-halo" x="235.1" y="136.6" text-anchor="middle">L13</text>
+<text class="lv-s lv-ink lv-halo" x="253.0" y="126.2" text-anchor="middle">L14</text>
+<text class="lv-s lv-ink lv-halo" x="275.1" y="116.5" text-anchor="middle">L15</text>
+<text class="lv-s lv-ink lv-halo" x="296.8" y="103.7" text-anchor="middle">L16</text>
+<text class="lv-s lv-ink lv-halo" x="320.8" y="91.0" text-anchor="middle">L17</text>
+<text class="lv-s lv-ink lv-halo" x="340.9" y="79.6" text-anchor="middle">L18</text>
+<text class="lv-s lv-ink lv-halo" x="371.6" y="68.5" text-anchor="middle">L19</text>
+<text class="lv-s lv-ink lv-halo" x="401.1" y="54.4" text-anchor="middle">L20</text>
+<text class="lv-s lv-ink lv-halo" x="414.6" y="47.5" text-anchor="middle">43%</text>
+<text class="lv-s lv-ink lv-halo" x="443.0" y="45.1" text-anchor="middle">46%</text>
+<text class="lv-s lv-ink lv-halo" x="504.4" y="43.8" text-anchor="middle">48%</text>
 <text class="lv-s lv-ink lv-halo" x="650.0" y="42.1" text-anchor="middle">50%</text>
 </svg>
 <svg viewBox="0 0 690 314" width="690" height="314" role="img" xmlns="http://www.w3.org/2000/svg" aria-label="Greedy mode: efficiency of each level-up">
@@ -163,7 +161,7 @@ Every level-up made as cheap as it can be on its own, ignoring later levels. Pas
 <line class="lv-axis" x1="58" y1="270" x2="670.0" y2="270"/>
 <line class="lv-ref" x1="58" y1="119.4" x2="670.0" y2="119.4"/>
 <text class="lv-b lv-reft lv-halo" x="664.0" y="113.4" text-anchor="end">19* Orr: 16% dmg for 156k dia</text>
-<polyline class="lv-eff" points="75.0,161.7 109.0,113.0 143.0,170.0 177.0,135.0 211.0,173.3 245.0,189.7 279.0,210.0 313.0,173.5 347.0,197.4 381.0,143.6 415.0,152.8 449.0,150.2 483.0,198.5 517.0,192.1 551.0,183.5 585.0,233.4 619.0,253.3 653.0,267.2"/>
+<polyline class="lv-eff" points="75.0,161.7 109.0,113.0 143.0,170.0 177.0,135.0 211.0,173.3 245.0,189.7 279.0,210.0 313.0,173.5 347.0,197.4 381.0,173.0 415.0,182.0 449.0,176.1 483.0,210.2 517.0,191.2 551.0,185.7 585.0,233.4 619.0,253.0 653.0,267.2"/>
 <circle class="lv-effdot" cx="75.0" cy="161.7" r="3.5"><title>level 7: +6.4% dmg for 87.9K diamonds = 0.707</title></circle>
 <text class="lv-t lv-muted" x="75.0" y="285" text-anchor="middle">L7</text>
 <circle class="lv-effdot" cx="109.0" cy="113.0" r="3.5"><title>level 8: +9.1% dmg for 84.9K diamonds = 1.024</title></circle>
@@ -182,23 +180,23 @@ Every level-up made as cheap as it can be on its own, ignoring later levels. Pas
 <text class="lv-t lv-muted" x="313.0" y="285" text-anchor="middle">L14</text>
 <circle class="lv-effdot" cx="347.0" cy="197.4" r="3.5"><title>level 15: +5.9% dmg for 122K diamonds = 0.473</title></circle>
 <text class="lv-t lv-muted" x="347.0" y="285" text-anchor="middle">L15</text>
-<circle class="lv-effdot" cx="381.0" cy="143.6" r="3.5"><title>level 16: +7.9% dmg for 91.8K diamonds = 0.824</title></circle>
+<circle class="lv-effdot" cx="381.0" cy="173.0" r="3.5"><title>level 16: +7.9% dmg for 119K diamonds = 0.633</title></circle>
 <text class="lv-t lv-muted" x="381.0" y="285" text-anchor="middle">L16</text>
-<circle class="lv-effdot" cx="415.0" cy="152.8" r="3.5"><title>level 17: +7.9% dmg for 99.2K diamonds = 0.764</title></circle>
+<circle class="lv-effdot" cx="415.0" cy="182.0" r="3.5"><title>level 17: +7.9% dmg for 132K diamonds = 0.574</title></circle>
 <text class="lv-t lv-muted" x="415.0" y="285" text-anchor="middle">L17</text>
-<circle class="lv-effdot" cx="449.0" cy="150.2" r="3.5"><title>level 18: +7.0% dmg for 86.4K diamonds = 0.781</title></circle>
+<circle class="lv-effdot" cx="449.0" cy="176.1" r="3.5"><title>level 18: +7.0% dmg for 110K diamonds = 0.612</title></circle>
 <text class="lv-t lv-muted" x="449.0" y="285" text-anchor="middle">L18</text>
-<circle class="lv-effdot" cx="483.0" cy="198.5" r="3.5"><title>level 19: +6.8% dmg for 142K diamonds = 0.466</title></circle>
+<circle class="lv-effdot" cx="483.0" cy="210.2" r="3.5"><title>level 19: +6.8% dmg for 169K diamonds = 0.390</title></circle>
 <text class="lv-t lv-muted" x="483.0" y="285" text-anchor="middle">L19</text>
-<circle class="lv-effdot" cx="517.0" cy="192.1" r="3.5"><title>level 20: +8.7% dmg for 164K diamonds = 0.508</title></circle>
+<circle class="lv-effdot" cx="517.0" cy="191.2" r="3.5"><title>level 20: +8.7% dmg for 162K diamonds = 0.514</title></circle>
 <text class="lv-t lv-muted" x="517.0" y="285" text-anchor="middle">L20</text>
-<circle class="lv-effdot" cx="551.0" cy="183.5" r="3.5"><title>level 20, crit relic 43%: +4.1% dmg for 71.4K diamonds = 0.564</title></circle>
+<circle class="lv-effdot" cx="551.0" cy="185.7" r="3.5"><title>level 20, crit relic 43%: +4.1% dmg for 73.8K diamonds = 0.550</title></circle>
 <text class="lv-t lv-muted" x="551.0" y="285" text-anchor="middle">43%</text>
-<circle class="lv-effdot" cx="585.0" cy="233.4" r="3.5"><title>level 20, crit relic 46%: +5.6% dmg for 229K diamonds = 0.239</title></circle>
+<circle class="lv-effdot" cx="585.0" cy="233.4" r="3.5"><title>level 20, crit relic 46%: +5.7% dmg for 230K diamonds = 0.239</title></circle>
 <text class="lv-t lv-muted" x="585.0" y="285" text-anchor="middle">46%</text>
-<circle class="lv-effdot" cx="619.0" cy="253.3" r="3.5"><title>level 20, crit relic 48%: +6.5% dmg for 574K diamonds = 0.109</title></circle>
+<circle class="lv-effdot" cx="619.0" cy="253.0" r="3.5"><title>level 20, crit relic 48%: +6.5% dmg for 567K diamonds = 0.111</title></circle>
 <text class="lv-t lv-muted" x="619.0" y="285" text-anchor="middle">48%</text>
-<circle class="lv-effdot" cx="653.0" cy="267.2" r="3.5"><title>level 20, crit relic 50%: +7.5% dmg for 3.94M diamonds = 0.018</title></circle>
+<circle class="lv-effdot" cx="653.0" cy="267.2" r="3.5"><title>level 20, crit relic 50%: +7.6% dmg for 3.95M diamonds = 0.019</title></circle>
 <text class="lv-t lv-muted" x="653.0" y="285" text-anchor="middle">50%</text>
 <text class="lv-t lv-muted" x="364.0" y="306" text-anchor="middle">inheritor level reached, then crit relic amplification at level 20</text>
 </svg>
@@ -229,22 +227,22 @@ Every row is its own look-ahead: a plan searched for the cheapest route to that 
 | **13** | Mermaid Tear, Sky Eye, Mountain Crown: 7+ / 2- | 889,500 | 147K | 73% | 28.49% | 28.55% | +140.3% | +6.3% |
 | **14** | all twelve together: 80+ / 20- (totals) | 995,320 | 106K | 16% | 30.03% | 30.04% | +155.9% | +6.5% |
 | **15** | all twelve together: 83+ / 20- (totals) | 1,096,220 | 101K | 26% | 31.26% | 31.24% | +171.2% | +6.0% |
-| **16** | all twelve together: 85+ / 20- (totals) | 1,170,500 | 74.3K | 10% | 32.22% | 32.20% | +192.6% | +7.9% |
-| **17** | all twelve together: 89+ / 21- (totals) | 1,252,918 | 82.4K | 8% | 33.74% | 33.75% | +215.6% | +7.9% |
-| **18** | all twelve together: 91+ / 20- (totals) | 1,333,767 | 80.8K | 6% | 34.75% | 34.74% | +237.8% | +7.0% |
-| **19** | all twelve together: 94+ / 19- (totals) | 1,470,750 | 137K | 23% | 36.01% | 36.03% | +261.0% | +6.9% |
-| **20** | all twelve together: 96+ / 16- (totals) | 1,625,556 | 155K | 37% | 38.91% | 37.48% | +295.3% | +9.5% |
-| **20 + 43%** | Demon Eye 43%+ | 1,688,881 | 63.3K | - | 44.61% | 37.48% | +309.0% | +3.5% |
-| **20 + 46%** | Demon Eye 46%+ | 1,834,186 | 209K | - | 46.92% | 37.48% | +314.6% | +4.9% |
-| **20 + 48%** | Demon Eye 48%+ | 2,166,650 | 541K | - | 48.25% | 37.48% | +317.8% | +5.7% |
-| **20 + 50%** | Demon Eye 50%+ | 5,519,181 | 3.89M | - | 50.00% | 37.48% | +322.0% | +6.8% |
+| **16** | all twelve together: 85+ / 20- (totals) | 1,200,530 | 104K | 23% | 32.35% | 32.32% | +192.9% | +8.0% |
+| **17** | all twelve together: 89+ / 21- (totals) | 1,308,280 | 108K | 22% | 33.76% | 33.71% | +215.6% | +7.8% |
+| **18** | all twelve together: 91+ / 20- (totals) | 1,413,052 | 105K | 14% | 34.76% | 34.74% | +237.8% | +7.0% |
+| **19** | all twelve together: 94+ / 19- (totals) | 1,571,625 | 159K | 42% | 36.08% | 36.09% | +261.1% | +6.9% |
+| **20** | all twelve together: 96+ / 16- (totals) | 1,720,418 | 149K | 37% | 38.46% | 37.38% | +294.2% | +9.1% |
+| **20 + 43%** | Demon Eye 43%+ | 1,786,206 | 65.8K | - | 44.56% | 37.38% | +308.9% | +3.7% |
+| **20 + 46%** | Demon Eye 46%+ | 1,934,919 | 215K | - | 46.89% | 37.38% | +314.5% | +5.2% |
+| **20 + 48%** | Demon Eye 48%+ | 2,264,243 | 544K | - | 48.26% | 37.38% | +317.8% | +6.0% |
+| **20 + 50%** | Demon Eye 50%+ | 5,659,644 | 3.94M | - | 50.00% | 37.38% | +322.0% | +7.1% |
 
 </div>
 
 <div style="display:flex;flex-wrap:wrap;gap:12px">
 <svg viewBox="0 0 698 334" width="698" height="334" role="img" xmlns="http://www.w3.org/2000/svg" aria-label="Look-ahead mode: damage for diamonds">
 <title>Look-ahead mode: damage for diamonds</title>
-<desc>Each level as a bar at its average total diamonds, as tall as its damage increase on a log axis: level 20, crit relic 50% at 5.52M for +322%.</desc>
+<desc>Each level as a bar at its average total diamonds, as tall as its damage increase on a log axis: level 20, crit relic 50% at 5.66M for +322%.</desc>
 <style>.lv-bar{fill:#2a78d6;stroke:#ffffff;stroke-width:0.5}.lv-grid{stroke:#e1e0d9;stroke-width:1}.lv-axis{stroke:#c3c2b7;stroke-width:1;fill:none}.lv-ink{fill:#52514e}.lv-muted{fill:#898781}.lv-eff{stroke:#7b3fb8;stroke-width:2;fill:none}.lv-effdot{fill:#7b3fb8}.lv-ref{stroke:#e0b000;stroke-width:2;stroke-dasharray:5 4}.lv-reft{fill:#9a7700}.lv-halo{paint-order:stroke;stroke:#ffffff;stroke-width:3px;stroke-linejoin:round}.lv-t{font:11px system-ui,-apple-system,'Segoe UI',sans-serif}.lv-s{font:10px system-ui,-apple-system,'Segoe UI',sans-serif}.lv-b{font:600 11px system-ui,-apple-system,'Segoe UI',sans-serif}@media(prefers-color-scheme:dark){.lv-bar{fill:#3987e5;stroke:#1f1f1e}.lv-grid{stroke:#2c2c2a}.lv-axis{stroke:#383835}.lv-ink{fill:#c3c2b7}.lv-eff{stroke:#b287e8}.lv-effdot{fill:#b287e8}.lv-ref{stroke:#f2c94c}.lv-reft{fill:#f2c94c}.lv-halo{stroke:#1f1f1e}}</style>
 <line class="lv-grid" x1="58.0" y1="290.0" x2="604.0" y2="290.0"/>
 <line class="lv-grid" x1="622.0" y1="290.0" x2="678.0" y2="290.0"/>
@@ -298,7 +296,7 @@ Every row is its own look-ahead: a plan searched for the cheapest route to that 
 <line class="lv-axis" x1="58.0" y1="290" x2="604.0" y2="290"/>
 <line class="lv-axis" x1="622.0" y1="290" x2="678.0" y2="290"/>
 <polyline class="lv-axis" points="604.0,290.0 607.0,286.0 610.0,294.0 613.0,286.0 616.0,294.0 619.0,286.0 622.0,290.0"/>
-<text class="lv-t lv-muted" x="650.0" y="305" text-anchor="middle">5.52M</text>
+<text class="lv-t lv-muted" x="650.0" y="305" text-anchor="middle">5.66M</text>
 <text class="lv-t lv-muted" x="368.0" y="326" text-anchor="middle">average diamonds spent (axis broken before the last bar)</text>
 <rect class="lv-bar" x="65.3" y="277.7" width="6" height="12.3"><title>level 2: 47,235 diamonds, +7.6% dmg</title></rect>
 <rect class="lv-bar" x="71.9" y="259.4" width="6" height="30.6"><title>level 3: 77,542 diamonds, +19.9% dmg</title></rect>
@@ -314,15 +312,15 @@ Every row is its own look-ahead: a plan searched for the cheapest route to that 
 <rect class="lv-bar" x="249.3" y="142.1" width="6" height="147.9"><title>level 13: 889,500 diamonds, +140.3% dmg</title></rect>
 <rect class="lv-bar" x="272.4" y="131.5" width="6" height="158.5"><title>level 14: 995,320 diamonds, +155.9% dmg</title></rect>
 <rect class="lv-bar" x="294.4" y="121.7" width="6" height="168.3"><title>level 15: 1,096,220 diamonds, +171.2% dmg</title></rect>
-<rect class="lv-bar" x="310.6" y="108.8" width="6" height="181.2"><title>level 16: 1,170,500 diamonds, +192.6% dmg</title></rect>
-<rect class="lv-bar" x="328.6" y="96.1" width="6" height="193.9"><title>level 17: 1,252,918 diamonds, +215.6% dmg</title></rect>
-<rect class="lv-bar" x="346.3" y="84.6" width="6" height="205.4"><title>level 18: 1,333,767 diamonds, +237.8% dmg</title></rect>
-<rect class="lv-bar" x="376.2" y="73.4" width="6" height="216.6"><title>level 19: 1,470,750 diamonds, +261.0% dmg</title></rect>
-<rect class="lv-bar" x="410.0" y="58.1" width="6" height="231.9"><title>level 20: 1,625,556 diamonds, +295.3% dmg</title></rect>
-<rect class="lv-bar" x="423.9" y="52.3" width="6" height="237.7"><title>level 20, crit relic 43%: 1,688,881 diamonds, +309.0% dmg</title></rect>
-<rect class="lv-bar" x="455.6" y="50.0" width="6" height="240.0"><title>level 20, crit relic 46%: 1,834,186 diamonds, +314.6% dmg</title></rect>
-<rect class="lv-bar" x="528.2" y="48.7" width="6" height="241.3"><title>level 20, crit relic 48%: 2,166,650 diamonds, +317.8% dmg</title></rect>
-<rect class="lv-bar" x="647.0" y="47.0" width="6" height="243.0"><title>level 20, crit relic 50%: 5,519,181 diamonds, +322.0% dmg</title></rect>
+<rect class="lv-bar" x="317.2" y="108.7" width="6" height="181.3"><title>level 16: 1,200,530 diamonds, +192.9% dmg</title></rect>
+<rect class="lv-bar" x="340.7" y="96.1" width="6" height="193.9"><title>level 17: 1,308,280 diamonds, +215.6% dmg</title></rect>
+<rect class="lv-bar" x="363.6" y="84.6" width="6" height="205.4"><title>level 18: 1,413,052 diamonds, +237.8% dmg</title></rect>
+<rect class="lv-bar" x="398.2" y="73.3" width="6" height="216.7"><title>level 19: 1,571,625 diamonds, +261.1% dmg</title></rect>
+<rect class="lv-bar" x="430.7" y="58.6" width="6" height="231.4"><title>level 20: 1,720,418 diamonds, +294.2% dmg</title></rect>
+<rect class="lv-bar" x="445.1" y="52.4" width="6" height="237.6"><title>level 20, crit relic 43%: 1,786,206 diamonds, +308.9% dmg</title></rect>
+<rect class="lv-bar" x="477.6" y="50.1" width="6" height="239.9"><title>level 20, crit relic 46%: 1,934,919 diamonds, +314.5% dmg</title></rect>
+<rect class="lv-bar" x="549.5" y="48.7" width="6" height="241.3"><title>level 20, crit relic 48%: 2,264,243 diamonds, +317.8% dmg</title></rect>
+<rect class="lv-bar" x="647.0" y="47.1" width="6" height="242.9"><title>level 20, crit relic 50%: 5,659,644 diamonds, +322.0% dmg</title></rect>
 <text class="lv-s lv-ink lv-halo" x="68.3" y="272.7" text-anchor="middle">L2</text>
 <text class="lv-s lv-ink lv-halo" x="74.9" y="254.4" text-anchor="middle">L3</text>
 <text class="lv-s lv-ink lv-halo" x="76.6" y="245.2" text-anchor="middle">L4</text>
@@ -337,15 +335,15 @@ Every row is its own look-ahead: a plan searched for the cheapest route to that 
 <text class="lv-s lv-ink lv-halo" x="252.3" y="137.1" text-anchor="middle">L13</text>
 <text class="lv-s lv-ink lv-halo" x="275.4" y="126.5" text-anchor="middle">L14</text>
 <text class="lv-s lv-ink lv-halo" x="297.4" y="116.7" text-anchor="middle">L15</text>
-<text class="lv-s lv-ink lv-halo" x="313.6" y="103.8" text-anchor="middle">L16</text>
-<text class="lv-s lv-ink lv-halo" x="331.6" y="91.1" text-anchor="middle">L17</text>
-<text class="lv-s lv-ink lv-halo" x="349.3" y="79.6" text-anchor="middle">L18</text>
-<text class="lv-s lv-ink lv-halo" x="379.2" y="68.4" text-anchor="middle">L19</text>
-<text class="lv-s lv-ink lv-halo" x="413.0" y="53.1" text-anchor="middle">L20</text>
-<text class="lv-s lv-ink lv-halo" x="426.9" y="47.3" text-anchor="middle">43%</text>
-<text class="lv-s lv-ink lv-halo" x="458.6" y="45.0" text-anchor="middle">46%</text>
-<text class="lv-s lv-ink lv-halo" x="531.2" y="43.7" text-anchor="middle">48%</text>
-<text class="lv-s lv-ink lv-halo" x="650.0" y="42.0" text-anchor="middle">50%</text>
+<text class="lv-s lv-ink lv-halo" x="320.2" y="103.7" text-anchor="middle">L16</text>
+<text class="lv-s lv-ink lv-halo" x="343.7" y="91.1" text-anchor="middle">L17</text>
+<text class="lv-s lv-ink lv-halo" x="366.6" y="79.6" text-anchor="middle">L18</text>
+<text class="lv-s lv-ink lv-halo" x="401.2" y="68.3" text-anchor="middle">L19</text>
+<text class="lv-s lv-ink lv-halo" x="433.7" y="53.6" text-anchor="middle">L20</text>
+<text class="lv-s lv-ink lv-halo" x="448.1" y="47.4" text-anchor="middle">43%</text>
+<text class="lv-s lv-ink lv-halo" x="480.6" y="45.1" text-anchor="middle">46%</text>
+<text class="lv-s lv-ink lv-halo" x="552.5" y="43.7" text-anchor="middle">48%</text>
+<text class="lv-s lv-ink lv-halo" x="650.0" y="42.1" text-anchor="middle">50%</text>
 </svg>
 <svg viewBox="0 0 690 314" width="690" height="314" role="img" xmlns="http://www.w3.org/2000/svg" aria-label="Look-ahead mode: efficiency of each level-up">
 <title>Look-ahead mode: efficiency of each level-up</title>
@@ -363,7 +361,7 @@ Every row is its own look-ahead: a plan searched for the cheapest route to that 
 <line class="lv-axis" x1="58" y1="270" x2="670.0" y2="270"/>
 <line class="lv-ref" x1="58" y1="119.4" x2="670.0" y2="119.4"/>
 <text class="lv-b lv-reft lv-halo" x="664.0" y="113.4" text-anchor="end">19* Orr: 16% dmg for 156k dia</text>
-<polyline class="lv-eff" points="75.0,159.9 109.0,112.3 143.0,121.4 177.0,119.8 211.0,170.7 245.0,185.3 279.0,206.3 313.0,179.0 347.0,181.9 381.0,112.9 415.0,129.1 449.0,141.1 483.0,195.8 517.0,180.1 551.0,187.3 585.0,234.9 619.0,254.3 653.0,267.4"/>
+<polyline class="lv-eff" points="75.0,159.9 109.0,112.3 143.0,121.4 177.0,119.8 211.0,170.7 245.0,185.3 279.0,206.3 313.0,179.0 347.0,181.9 381.0,156.8 415.0,163.5 449.0,170.5 483.0,205.5 517.0,179.9 551.0,184.6 585.0,234.1 619.0,253.6 653.0,267.3"/>
 <circle class="lv-effdot" cx="75.0" cy="159.9" r="3.5"><title>level 7: +6.3% dmg for 85.5K diamonds = 0.718</title></circle>
 <text class="lv-t lv-muted" x="75.0" y="285" text-anchor="middle">L7</text>
 <circle class="lv-effdot" cx="109.0" cy="112.3" r="3.5"><title>level 8: +9.0% dmg for 84.1K diamonds = 1.029</title></circle>
@@ -382,23 +380,23 @@ Every row is its own look-ahead: a plan searched for the cheapest route to that 
 <text class="lv-t lv-muted" x="313.0" y="285" text-anchor="middle">L14</text>
 <circle class="lv-effdot" cx="347.0" cy="181.9" r="3.5"><title>level 15: +6.0% dmg for 101K diamonds = 0.574</title></circle>
 <text class="lv-t lv-muted" x="347.0" y="285" text-anchor="middle">L15</text>
-<circle class="lv-effdot" cx="381.0" cy="112.9" r="3.5"><title>level 16: +7.9% dmg for 74.3K diamonds = 1.024</title></circle>
+<circle class="lv-effdot" cx="381.0" cy="156.8" r="3.5"><title>level 16: +8.0% dmg for 104K diamonds = 0.738</title></circle>
 <text class="lv-t lv-muted" x="381.0" y="285" text-anchor="middle">L16</text>
-<circle class="lv-effdot" cx="415.0" cy="129.1" r="3.5"><title>level 17: +7.9% dmg for 82.4K diamonds = 0.919</title></circle>
+<circle class="lv-effdot" cx="415.0" cy="163.5" r="3.5"><title>level 17: +7.8% dmg for 108K diamonds = 0.695</title></circle>
 <text class="lv-t lv-muted" x="415.0" y="285" text-anchor="middle">L17</text>
-<circle class="lv-effdot" cx="449.0" cy="141.1" r="3.5"><title>level 18: +7.0% dmg for 80.8K diamonds = 0.841</title></circle>
+<circle class="lv-effdot" cx="449.0" cy="170.5" r="3.5"><title>level 18: +7.0% dmg for 105K diamonds = 0.649</title></circle>
 <text class="lv-t lv-muted" x="449.0" y="285" text-anchor="middle">L18</text>
-<circle class="lv-effdot" cx="483.0" cy="195.8" r="3.5"><title>level 19: +6.9% dmg for 137K diamonds = 0.484</title></circle>
+<circle class="lv-effdot" cx="483.0" cy="205.5" r="3.5"><title>level 19: +6.9% dmg for 159K diamonds = 0.421</title></circle>
 <text class="lv-t lv-muted" x="483.0" y="285" text-anchor="middle">L19</text>
-<circle class="lv-effdot" cx="517.0" cy="180.1" r="3.5"><title>level 20: +9.5% dmg for 155K diamonds = 0.587</title></circle>
+<circle class="lv-effdot" cx="517.0" cy="179.9" r="3.5"><title>level 20: +9.1% dmg for 149K diamonds = 0.588</title></circle>
 <text class="lv-t lv-muted" x="517.0" y="285" text-anchor="middle">L20</text>
-<circle class="lv-effdot" cx="551.0" cy="187.3" r="3.5"><title>level 20, crit relic 43%: +3.5% dmg for 63.3K diamonds = 0.539</title></circle>
+<circle class="lv-effdot" cx="551.0" cy="184.6" r="3.5"><title>level 20, crit relic 43%: +3.7% dmg for 65.8K diamonds = 0.557</title></circle>
 <text class="lv-t lv-muted" x="551.0" y="285" text-anchor="middle">43%</text>
-<circle class="lv-effdot" cx="585.0" cy="234.9" r="3.5"><title>level 20, crit relic 46%: +4.9% dmg for 209K diamonds = 0.229</title></circle>
+<circle class="lv-effdot" cx="585.0" cy="234.1" r="3.5"><title>level 20, crit relic 46%: +5.2% dmg for 215K diamonds = 0.234</title></circle>
 <text class="lv-t lv-muted" x="585.0" y="285" text-anchor="middle">46%</text>
-<circle class="lv-effdot" cx="619.0" cy="254.3" r="3.5"><title>level 20, crit relic 48%: +5.7% dmg for 541K diamonds = 0.102</title></circle>
+<circle class="lv-effdot" cx="619.0" cy="253.6" r="3.5"><title>level 20, crit relic 48%: +6.0% dmg for 544K diamonds = 0.107</title></circle>
 <text class="lv-t lv-muted" x="619.0" y="285" text-anchor="middle">48%</text>
-<circle class="lv-effdot" cx="653.0" cy="267.4" r="3.5"><title>level 20, crit relic 50%: +6.8% dmg for 3.89M diamonds = 0.017</title></circle>
+<circle class="lv-effdot" cx="653.0" cy="267.3" r="3.5"><title>level 20, crit relic 50%: +7.1% dmg for 3.94M diamonds = 0.017</title></circle>
 <text class="lv-t lv-muted" x="653.0" y="285" text-anchor="middle">50%</text>
 <text class="lv-t lv-muted" x="364.0" y="306" text-anchor="middle">inheritor level reached, then crit relic amplification at level 20</text>
 </svg>
@@ -408,32 +406,32 @@ Every row is its own look-ahead: a plan searched for the cheapest route to that 
 
 ## One attempt at each level
 
-The average amplification of a single inheritance attempt made at each inheritor level, played for the most amplification (+5% a glory success, -2% a despair success, floored at 0%). Exact, from the solver, not simulated. Level 1 is the starting board; a level-20 attempt uses the 10th slot, which no level-up ever gets to.
+The average amplification of a single inheritance attempt made at each inheritor level, played for the most amplification (+5% a glory success, -2% a despair success, floored at 0%). Exact, from the solver, not simulated. Level 1 is the starting board; a level-20 attempt uses the 10th slot, which no level-up ever gets to. The first rate is the chance the attempt opens on: the level-15 glory success moves it down a step, the level-19 despair failure back up.
 
 <div style="font-size:0.72em">
 
-| level | memory slots | spirit power | glory rate | despair rate | starts with | average amplification | best possible | wipe chance |
-|---|---|---|---|---|---|---|---|---|
-| **1** | 5 | 8 | +0% | +0% | - | **13.12%** | 25% | 0.36% |
-| **2** | 5 | 8 | +2% | +0% | - | **13.55%** | 25% | 0.39% |
-| **3** | 5 | 8 | +2% | -2% | - | **13.73%** | 25% | 0.35% |
-| **4** | 6 | 8 | +2% | -2% | - | **16.07%** | 30% | 2.09% |
-| **5** | 6 | 9 | +2% | -2% | - | **16.10%** | 30% | 1.99% |
-| **6** | 6 | 9 | +4% | -2% | - | **16.58%** | 30% | 2.06% |
-| **7** | 6 | 9 | +4% | -4% | - | **16.81%** | 30% | 2.02% |
-| **8** | 7 | 9 | +4% | -4% | - | **18.53%** | 35% | 4.95% |
-| **9** | 7 | 10 | +4% | -4% | - | **19.97%** | 35% | 0.90% |
-| **10** | 7 | 10 | +6% | -4% | - | **20.54%** | 35% | 0.94% |
-| **11** | 7 | 10 | +6% | -6% | - | **20.81%** | 35% | 0.88% |
-| **12** | 8 | 10 | +6% | -6% | - | **23.14%** | 40% | 2.55% |
-| **13** | 8 | 10 | +8% | -6% | - | **23.73%** | 40% | 2.60% |
-| **14** | 8 | 10 | +8% | -8% | - | **24.09%** | 40% | 2.44% |
-| **15** | 8 | 10 | +8% | -8% | 1 glory success | **25.67%** | 40% | 2.09% |
-| **16** | 9 | 10 | +8% | -8% | 1 glory success | **27.49%** | 45% | 4.18% |
-| **17** | 9 | 10 | +10% | -8% | 1 glory success | **28.06%** | 45% | 4.20% |
-| **18** | 9 | 10 | +10% | -10% | 1 glory success | **28.50%** | 45% | 4.01% |
-| **19** | 9 | 10 | +10% | -10% | 1 glory success, 1 despair fail | **30.74%** | 45% | 0.98% |
-| **20** | 10 | 10 | +10% | -10% | 1 glory success, 1 despair fail | **33.10%** | 50% | 2.25% |
+| level | memory slots | spirit power | glory rate | despair rate | starts with | first rate | average amplification | best possible | wipe chance |
+|---|---|---|---|---|---|---|---|---|---|
+| **1** | 5 | 8 | +0% | +0% | - | 80% | **13.12%** | 25% | 0.36% |
+| **2** | 5 | 8 | +2% | +0% | - | 80% | **13.55%** | 25% | 0.39% |
+| **3** | 5 | 8 | +2% | -2% | - | 80% | **13.73%** | 25% | 0.35% |
+| **4** | 6 | 8 | +2% | -2% | - | 80% | **16.07%** | 30% | 2.09% |
+| **5** | 6 | 9 | +2% | -2% | - | 80% | **16.10%** | 30% | 1.99% |
+| **6** | 6 | 9 | +4% | -2% | - | 80% | **16.58%** | 30% | 2.06% |
+| **7** | 6 | 9 | +4% | -4% | - | 80% | **16.81%** | 30% | 2.02% |
+| **8** | 7 | 9 | +4% | -4% | - | 80% | **18.53%** | 35% | 4.95% |
+| **9** | 7 | 10 | +4% | -4% | - | 80% | **19.97%** | 35% | 0.90% |
+| **10** | 7 | 10 | +6% | -4% | - | 80% | **20.54%** | 35% | 0.94% |
+| **11** | 7 | 10 | +6% | -6% | - | 80% | **20.81%** | 35% | 0.88% |
+| **12** | 8 | 10 | +6% | -6% | - | 80% | **23.14%** | 40% | 2.55% |
+| **13** | 8 | 10 | +8% | -6% | - | 80% | **23.73%** | 40% | 2.60% |
+| **14** | 8 | 10 | +8% | -8% | - | 80% | **24.09%** | 40% | 2.44% |
+| **15** | 8 | 10 | +8% | -8% | 1 glory success | 65% | **24.55%** | 40% | 2.48% |
+| **16** | 9 | 10 | +8% | -8% | 1 glory success | 65% | **26.23%** | 45% | 4.49% |
+| **17** | 9 | 10 | +10% | -8% | 1 glory success | 65% | **26.77%** | 45% | 4.35% |
+| **18** | 9 | 10 | +10% | -10% | 1 glory success | 65% | **27.24%** | 45% | 4.32% |
+| **19** | 9 | 10 | +10% | -10% | 1 glory success, 1 despair fail | 80% | **30.74%** | 45% | 0.98% |
+| **20** | 10 | 10 | +10% | -10% | 1 glory success, 1 despair fail | 80% | **33.10%** | 50% | 2.25% |
 
 </div>
 
@@ -451,9 +449,9 @@ Each level-up as cheap as it can be on its own:
 - **Level 4:** build relics to 5+ / 2-, max glory + min despair, keeping gap-closers; when stuck, summon, keeping spare relics.
 - **Level 6:** build relics to 4+ / 1-, max glory + min despair, keeping gap-closers; when stuck, spare relics go to pity (kept if they reach 5+ / 2-).
 - **Level 7:** roll every short relic to 4+ / 2-, all-or-nothing; when stuck, spare relics go to pity (kept if they reach 4+ / 2-).
-- **Levels 8, 10, 14, 17, 18, 20:** repair the board, max glory + min despair, keeping gap-closers; when stuck, spare relics go to pity (kept if they reach 4+ / 1-).
+- **Levels 8, 10, 14, 17:** repair the board, max glory + min despair, keeping gap-closers; when stuck, spare relics go to pity (kept if they reach 4+ / 1-).
 - **Levels 11, 12:** repair the board, max glory + min despair, keeping gap-closers; when stuck, spare relics go to pity (kept if they reach 5+ / 2-).
-- **Levels 15, 16:** repair the board, max glory + min despair, keeping gap-closers; when stuck, spare relics go to pity (kept if they reach 4+ / 2-).
+- **Levels 15, 16, 18, 20:** repair the board, max glory + min despair, keeping gap-closers; when stuck, spare relics go to pity (kept if they reach 4+ / 2-).
 - **Level 19:** repair the board, all-or-nothing, keeping gap-closers; when stuck, spare relics go to pity (kept if they reach 4+ / 2-).
 - **Past level 20, tiers 43%, 46%, 48% and 50%:** the moment level 20 is reached, convert every leftover relic into crit relics (10 of one type for 7) and spend them all on the Demon Eye of Weakness, played for 43%, without summoning more - the level 20 row includes this. Then each tier is its own farm from there: keep converting as soon as a type reaches 10, attempt the crit relic, summoning when short, and play every attempt all-or-nothing for the tier's own mark. A result is kept only if it raises the relic's amplification.
 
@@ -468,7 +466,7 @@ Every row of the look-ahead table has its own plan (all saved in `src/levels/loo
 - **Level 7:** roll every short relic to 4+ / 2-, max glory + min despair (greedy: roll every short relic to 4+ / 2-, all-or-nothing).
 - **Level 10:** build relics to 5+ / 2-, max glory + min despair, keeping gap-closers (greedy: repair the board, max glory + min despair, keeping gap-closers).
 - **Level 20:** repair the board, all-or-nothing, keeping gap-closers (greedy: repair the board, max glory + min despair, keeping gap-closers).
-- **Reaches level 20 for 1.63M** against greedy's 1.78M, 8% less.
+- **Reaches level 20 for 1.72M** against greedy's 1.89M, 9% less.
 
 Level by level:
 
