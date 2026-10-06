@@ -418,7 +418,7 @@ fn advice_text(game: &Game, advice: &Advice, board: &Board) -> String {
             out.push_str(&format!("     play it {}\n", play_text(*key)));
             keep_block(&mut out, Some(*bar));
             let why = format!(
-                "why: the plan is working on {} - and attempts whichever of those you hold the most of",
+                "why: the plan is working on {} - and attempts, of those with 10 on hand, the one likeliest to make its step (the one you hold the most of, of equals)",
                 work_text(advice, board)
             );
             out.push_str(&wrap(&why, 5, 10));

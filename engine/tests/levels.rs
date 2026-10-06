@@ -598,18 +598,22 @@ fn advise(target: levels::Target, level: usize, board: &[(u8, u8)], stock: &[u32
 }
 
 #[test]
-fn advice_repairs_the_best_stocked_relic_over_the_despair_budget() {
+fn advice_repairs_the_worst_relic_over_the_despair_budget() {
     let target = levels::Target::tier(46);
     let a = advise(target, 18, &BOARD, &STOCK);
     assert_eq!(a.goal, 19); // 94+ / 19-: three despair over, two glory short
-    // the plan's level 19 step repairs: the 3-despair relics are asked for one
-    // less, and Mountain Crown (137) is stocked best of Oath (135) and Veil (105)
+    // the plan's level 19 step repairs: every relic with 2+ despair is asked
+    // for one less; a 3-despair relic is likeliest to get there, and Mountain
+    // Crown (137) is stocked best of those, Oath (135) and Veil (105)
     let key = levels::TableKey::Target { level: 18, glory: 8, despair: Some(2) };
     let expect = levels::Move::Quest { relic: 11, bar: Bar::new(8, Some(2)), key, closer: true };
     assert_eq!(a.next, levels::Next::Move(expect));
     assert_eq!(a.roll(), Some((11, key)));
-    let three = Bar::new(8, Some(2));
-    assert_eq!(a.work, vec![(2, three), (7, three), (11, three)]);
+    let (three, two) = (Bar::new(8, Some(2)), Bar::new(8, Some(1)));
+    assert_eq!(
+        a.work,
+        vec![(2, three), (3, two), (4, two), (6, two), (7, three), (10, Bar::new(7, Some(1))), (11, three)]
+    );
     // kept: the bar, anything that dominates, or anything closing the gap
     assert_eq!(game().keeps(&a, &BOARD, (8, 2)), Some(true));
     assert_eq!(game().keeps(&a, &BOARD, (9, 3)), Some(true));
@@ -626,8 +630,15 @@ fn advice_follows_the_stock() {
     stock[11] = 9;
     let a = advise(target, 18, &BOARD, &stock);
     assert_eq!(a.roll().map(|(relic, _)| relic), Some(2));
-    // none of the three affordable: a filler roll for the pity, best-stocked
+    // none of the three affordable: an 8/2 asked for 8/1 - the Archer Seal
+    // (156), not a filler roll
     for i in [2, 7, 11] {
+        stock[i] = 0;
+    }
+    let a = advise(target, 18, &BOARD, &stock);
+    assert_eq!(a.roll(), Some((6, levels::TableKey::Target { level: 18, glory: 8, despair: Some(1) })));
+    // no relic with 2+ despair affordable: a filler roll for the pity, best-stocked
+    for i in [3, 4, 6, 10] {
         stock[i] = 0;
     }
     let a = advise(target, 18, &BOARD, &stock);

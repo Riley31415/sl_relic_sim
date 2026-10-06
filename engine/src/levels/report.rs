@@ -13,7 +13,7 @@ use crate::economy::{
 use crate::format::{amp_pct, commas, human, pct, signed_pct};
 use crate::solver::{Config, Solver, Strategy, TIERS};
 
-pub const HABITS: &str = "attempt as soon as any relic the quest needs is affordable; use whichever needed relic you hold the most of; keep a result only if it helps";
+pub const HABITS: &str = "attempt as soon as any relic the quest needs is affordable; use the affordable needed relic likeliest to make its step (on a total level; the one you hold the most of otherwise, and of equals); keep a result only if it helps";
 
 /// A bar as `glory+ / despair-`, e.g. 4+ / 2-.
 pub fn bar_text(glory: u8, despair: Option<u8>) -> String {
@@ -191,13 +191,13 @@ fn describe_quest(game: &Game, plan: &Plan, level: usize) -> String {
         Quest::Total { .. } => {
             // which relic is a stock question, not a quality one: preferring the
             // next level's relics (or ones already worked on) never paid
-            let mut pool = "whichever relics you hold the most of".to_string();
+            let mut pool = "whichever relic is likeliest to make its step".to_string();
             if locked != 0 {
                 let _ = write!(pool, ", except {}", names(locked));
             }
             let mut text = if step.profile == Some(Profile::Repair) {
                 format!(
-                    "repair, do not rebuild: using {pool}, shave one despair off the worst relics until the total fits, then add one glory at a time"
+                    "repair, do not rebuild: using {pool}, shave one despair at a time off relics with 2 or more (the worst first) until the total fits, then add one glory at a time"
                 )
             } else {
                 format!("roll {pool} to {} until the totals clear", bar_text(pg, Some(pd)))

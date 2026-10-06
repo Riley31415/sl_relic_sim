@@ -396,8 +396,11 @@ fn plan(quest: &Quest, rules: &LevelRules, states: &[Relic], slots: u8, out: &mu
     }
 }
 
-/// Single-step fixes for a total: shave a despair off the worst relics while
-/// the budget is blown, otherwise ask each relic for one more glory - each
+/// Single-step fixes for a total: shave a despair off any relic with 2 or
+/// more while the budget is blown (which one is `choose`'s call: the likeliest
+/// step, so the worst relic first - an 8/3 drops to 8/2 more easily than an
+/// 8/2 to 8/1 - but an 8/2 rather than nothing when the worst cannot be
+/// afforded), otherwise ask each relic for one more glory - each
 /// that has room for it: a relic with every slot a glory success already
 /// cannot be asked for more (it would be rolled for nothing).
 fn repair(
@@ -411,11 +414,8 @@ fn repair(
     let (glory, despair) = totals(states);
     if despair > need_despair {
         // 2 -> 1 is far cheaper than 1 -> 0, so never ask a relic below 1
-        let worst = pool.clone().map(|i| states[i].1).max().unwrap_or(0).max(2);
         out.extend(
-            pool.clone()
-                .filter(|&i| states[i].1 >= worst)
-                .map(|i| (i, Bar::new(states[i].0, Some(states[i].1 - 1)))),
+            pool.clone().filter(|&i| states[i].1 >= 2).map(|i| (i, Bar::new(states[i].0, Some(states[i].1 - 1)))),
         );
         if !out.is_empty() {
             return;
@@ -531,11 +531,43 @@ mod tests {
     }
 
     #[test]
-    fn repair_shaves_despair_from_the_worst_relics_first() {
+    fn repair_shaves_despair_off_any_relic_above_1() {
         let states = [(4, 3), (4, 2), (5, 3), (4, 1)];
         let mut out = Vec::new();
         repair(&states, 10, 5, 9, 0..4, &mut out);
-        assert_eq!(out, vec![(0, Bar::new(4, Some(2))), (2, Bar::new(5, Some(2)))]);
+        assert_eq!(out, vec![(0, Bar::new(4, Some(2))), (1, Bar::new(4, Some(1))), (2, Bar::new(5, Some(2)))]);
+    }
+
+    #[test]
+    fn a_shave_goes_to_the_worst_relic_when_affordable_and_an_8_2_rather_than_a_filler() {
+        // level 19 for 20 (96+ / 16- totals), at 92 / 19: Mountain Crown 8/3
+        // is the easiest despair to shave, but with 7 on hand the Archer
+        // Seal's 8/2 -> 8/1 is rolled, not a pity filler
+        let rules = LevelRules {
+            base: Bar::new(4, Some(2)),
+            surgical: true,
+            closer: true,
+            score: None,
+            filler: Some(Bar::new(4, Some(2))),
+            locked: 0,
+            spare: 0b10, // the crit relic, on the way to the top
+            prefer: None,
+        };
+        let states = [(7, 1), (7, 1), (8, 2), (8, 2), (8, 2), (7, 1), (8, 2), (8, 1), (7, 1), (9, 1), (7, 2), (8, 3)];
+        let quest = total(96, 16);
+        let pick = |stock: &[u32]| {
+            let mut profiles = Vec::new();
+            plan(&quest, &rules, &states, 9, &mut profiles);
+            let todo: Vec<usize> = profiles.iter().map(|p| p.0).collect();
+            match choose(&quest, &rules, 19, &profiles, &todo, stock, 10) {
+                Move::Quest { relic, bar, .. } => (relic, bar),
+                _ => panic!("a quest roll"),
+            }
+        };
+        let mut stock = [137, 115, 125, 92, 109, 28, 136, 5, 36, 160, 4, 7];
+        assert_eq!(pick(&stock), (6, Bar::new(8, Some(1))));
+        stock[11] = 50;
+        assert_eq!(pick(&stock), (11, Bar::new(8, Some(2))));
     }
 
     #[test]
