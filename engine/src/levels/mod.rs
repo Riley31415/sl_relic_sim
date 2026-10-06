@@ -17,8 +17,9 @@ use std::sync::LazyLock;
 
 use rayon::prelude::*;
 
-pub use rules::{Bar, Quest, Relic, RelicSet, contains, members, set_of};
-pub use sim::{Economy, Game, LevelUp, Run, RunOptions};
+pub use rules::{Bar, Quest, Relic, RelicSet, contains, members, set_of, totals};
+pub use sim::{Economy, Game, LevelUp, Move, Run, RunOptions};
+pub use tables::{TableKey, outcomes};
 
 use crate::economy::{
     CONVERT_FROM, CONVERT_TO, DIAMONDS_PER_SUMMON, RELIC_TYPES, RELICS_PER_ATTEMPT, RELICS_PER_SUMMON,
@@ -486,6 +487,7 @@ impl Plan {
             score: s.score.then_some((1.0, 1.0)),
             filler: s.filler.map(|(g, d)| Bar::new(g, Some(d))),
             locked: self.protected(game, level),
+            spare: game.future_named(level) | if level + 1 >= MAX_LEVEL { 1 << CRIT } else { 0 },
             prefer: s.prefer,
         }
     }
@@ -909,4 +911,129 @@ pub fn lookahead_all(
         out.push((target, plan, cost));
     }
     Ok(out)
+}
+
+// ------------------------------------------------------------------ advice
+
+/// What to do next, from a board seen part-way through a climb.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Next {
+    /// the board meets the next level's quest already
+    LevelUp,
+    /// a roll for the quest or a filler, or a summon
+    Move(Move),
+    /// at the top, short of the tier: trade every full lot of each other
+    /// relic, as (relic, lots), into the crit relic
+    Convert(Vec<(usize, u32)>),
+    /// at the top, short of the tier: roll the crit relic played per `key`,
+    /// keeping any higher amplification
+    Farm { key: TableKey },
+    /// the target is reached
+    Done,
+}
+
+/// A plan's next step from one board.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Advice {
+    /// the inheritor level the board was seen at
+    pub level: usize,
+    /// the level being worked toward (for a tier, the top itself)
+    pub goal: usize,
+    pub next: Next,
+    /// the relics the level's quest work is on, each with the bar it is
+    /// rolled toward (empty past the top, or once the quest is met)
+    pub work: Vec<(usize, Bar)>,
+}
+
+impl Advice {
+    /// The relic rolled next and how that attempt is played, if it is a roll.
+    pub fn roll(&self) -> Option<(usize, TableKey)> {
+        match self.next {
+            Next::Move(Move::Quest { relic, key, .. } | Move::Filler { relic, key, .. }) => {
+                Some((relic, key))
+            }
+            Next::Farm { key } => Some((CRIT, key)),
+            _ => None,
+        }
+    }
+}
+
+impl Game {
+    /// What `plan` does next toward `target` from a board seen at inheritor
+    /// `level`: `states` is every relic's (glory, despair) and `stock` how
+    /// many of each are on hand.  The same decisions the Monte Carlo makes,
+    /// bar two things a single board cannot show: the pity meter (it decides
+    /// when a level comes, never what is rolled) and how far earlier attempts
+    /// at this level pushed the bars (see `sim::next_move`).
+    pub fn advise(
+        &self,
+        plan: &Plan,
+        target: Target,
+        level: usize,
+        states: &[Relic],
+        stock: &[u32],
+    ) -> Result<Advice, String> {
+        let n = self.economy.relics;
+        if states.len() != n || stock.len() != n {
+            return Err(format!("a board needs all {n} relics"));
+        }
+        if level < 1 || level > target.level {
+            return Err(format!("level {level} is not on the way to {}", target.code()));
+        }
+        if level < target.level {
+            let goal = level + 1;
+            let quest = self.quests[goal].as_ref().ok_or(format!("no requirement for level {goal}"))?;
+            if quest.satisfied(states) {
+                return Ok(Advice { level, goal, next: Next::LevelUp, work: Vec::new() });
+            }
+            let rules = plan.rules(self, goal);
+            let (next, work) = sim::next_move(quest, &rules, level, states, stock, self.economy.per_attempt)
+                .ok_or(format!("stuck trying to reach level {goal}"))?;
+            return Ok(Advice { level, goal, next: Next::Move(next), work });
+        }
+        // at the top: the crit relic farmed to the tier, as the runs do it
+        let next = match target.tier {
+            Some(mark) if amplification(states[CRIT]) < f64::from(mark) => {
+                let lots: Vec<(usize, u32)> = (0..n)
+                    .filter(|&i| i != CRIT)
+                    .map(|i| (i, stock[i] / self.economy.convert_from))
+                    .filter(|&(_, lots)| lots > 0)
+                    .collect();
+                if !lots.is_empty() {
+                    Next::Convert(lots)
+                } else if stock[CRIT] >= self.economy.per_attempt {
+                    Next::Farm { key: TableKey::Reach { level: level as u8, mark } }
+                } else {
+                    Next::Move(Move::Summon)
+                }
+            }
+            _ => Next::Done,
+        };
+        Ok(Advice { level, goal: level, next, work: Vec::new() })
+    }
+
+    /// Whether the roll `advice` makes keeps `new` on the relic it rolls;
+    /// None if it is not a roll.
+    pub fn keeps(&self, advice: &Advice, states: &[Relic], new: Relic) -> Option<bool> {
+        let quest = || self.quests[advice.goal].as_ref().expect("advice is for a real level");
+        match advice.next {
+            Next::Move(Move::Quest { relic, bar, closer, .. }) => {
+                Some(sim::keeps(quest(), closer, states, relic, new, bar))
+            }
+            Next::Move(Move::Filler { relic, bar, .. }) => {
+                Some(sim::filler_keeps(quest(), states, relic, new, bar))
+            }
+            Next::Farm { .. } => Some(amplification(new) > amplification(states[CRIT])),
+            _ => None,
+        }
+    }
+}
+
+/// The saved look-ahead plan for `target`.
+pub fn lookahead_plan(target: Target) -> Result<Plan, String> {
+    lookahead_plans()?
+        .into_iter()
+        .find(|(t, _)| *t == target)
+        .map(|(_, plan)| plan)
+        .ok_or(format!("no look-ahead plan for {}", target.code()))
 }

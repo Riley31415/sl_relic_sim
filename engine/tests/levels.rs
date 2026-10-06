@@ -584,3 +584,91 @@ fn a_tier_search_scores_the_climb_and_the_farm_together() {
     assert!(whole >= climb);
     assert_eq!(levels::SearchOptions::per_target(t).tier, Some(41));
 }
+
+// ------------------------------------------------------------------ advice
+
+/// A level 18 board (Hero's Legacy, 92 glory / 22 despair) and its stock.
+const BOARD: [(u8, u8); 12] =
+    [(7, 1), (7, 1), (8, 3), (8, 2), (8, 2), (7, 1), (8, 2), (8, 3), (7, 1), (9, 1), (7, 2), (8, 3)];
+const STOCK: [u32; 12] = [207, 115, 135, 92, 109, 28, 156, 105, 36, 180, 4, 137];
+
+fn advise(target: levels::Target, level: usize, board: &[(u8, u8)], stock: &[u32]) -> levels::Advice {
+    let plan = levels::lookahead_plan(target).unwrap();
+    game().advise(&plan, target, level, board, stock).unwrap()
+}
+
+#[test]
+fn advice_repairs_the_best_stocked_relic_over_the_despair_budget() {
+    let target = levels::Target::tier(46);
+    let a = advise(target, 18, &BOARD, &STOCK);
+    assert_eq!(a.goal, 19); // 94+ / 19-: three despair over, two glory short
+    // the plan's level 19 step repairs: the 3-despair relics are asked for one
+    // less, and Mountain Crown (137) is stocked best of Oath (135) and Veil (105)
+    let key = levels::TableKey::Target { level: 18, glory: 8, despair: Some(2) };
+    let expect = levels::Move::Quest { relic: 11, bar: Bar::new(8, Some(2)), key, closer: true };
+    assert_eq!(a.next, levels::Next::Move(expect));
+    assert_eq!(a.roll(), Some((11, key)));
+    let three = Bar::new(8, Some(2));
+    assert_eq!(a.work, vec![(2, three), (7, three), (11, three)]);
+    // kept: the bar, anything that dominates, or anything closing the gap
+    assert_eq!(game().keeps(&a, &BOARD, (8, 2)), Some(true));
+    assert_eq!(game().keeps(&a, &BOARD, (9, 3)), Some(true));
+    assert_eq!(game().keeps(&a, &BOARD, (7, 1)), Some(true)); // gap 5 -> 4
+    assert_eq!(game().keeps(&a, &BOARD, (7, 2)), Some(false)); // gap 5 -> 5
+    assert_eq!(game().keeps(&a, &BOARD, (0, 0)), Some(false)); // a wipe
+}
+
+#[test]
+fn advice_follows_the_stock() {
+    let target = levels::Target::tier(46);
+    // without enough Mountain Crowns the next best-stocked 3-despair relic goes
+    let mut stock = STOCK;
+    stock[11] = 9;
+    let a = advise(target, 18, &BOARD, &stock);
+    assert_eq!(a.roll().map(|(relic, _)| relic), Some(2));
+    // none of the three affordable: a filler roll for the pity, best-stocked
+    for i in [2, 7, 11] {
+        stock[i] = 0;
+    }
+    let a = advise(target, 18, &BOARD, &stock);
+    assert!(matches!(a.next, levels::Next::Move(levels::Move::Filler { relic: 0, .. })), "{a:?}");
+    // nothing affordable at all: summon
+    let a = advise(target, 18, &BOARD, &[0; 12]);
+    assert_eq!(a.next, levels::Next::Move(levels::Move::Summon));
+}
+
+#[test]
+fn advice_levels_up_then_farms_the_tier() {
+    let target = levels::Target::tier(46);
+    let mut board = BOARD;
+    board[9] = (9, 0);
+    board[10] = (9, 0);
+    board[2] = (8, 1); // 94 glory, 17 despair: level 19 is met
+    let a = advise(target, 18, &board, &STOCK);
+    assert_eq!((a.goal, a.next), (19, levels::Next::LevelUp));
+    // at the top, short of 46%: trade the other relics in, then farm
+    let a = advise(target, MAX_LEVEL, &board, &STOCK);
+    match &a.next {
+        levels::Next::Convert(lots) => {
+            assert!(lots.contains(&(0, 20)) && lots.iter().all(|&(i, _)| i != CRIT && i != 10));
+        }
+        other => panic!("expected a trade, got {other:?}"),
+    }
+    let mut stock = [0; 12];
+    stock[CRIT] = 10;
+    let a = advise(target, MAX_LEVEL, &board, &stock);
+    assert_eq!(a.next, levels::Next::Farm { key: levels::TableKey::Reach { level: 20, mark: 46 } });
+    assert_eq!(game().keeps(&a, &board, (8, 1)), Some(true)); // 38% beats 33%
+    assert_eq!(game().keeps(&a, &board, (7, 1)), Some(false));
+    board[CRIT] = (10, 2);
+    assert_eq!(advise(target, MAX_LEVEL, &board, &stock).next, levels::Next::Done);
+}
+
+#[test]
+fn an_attempts_outcomes_add_up() {
+    let key = levels::TableKey::Target { level: 18, glory: 8, despair: Some(2) };
+    let outcomes = levels::outcomes(key);
+    assert!(close(outcomes.iter().map(|(_, p)| p).sum::<f64>(), 1.0, 1e-9));
+    let hit: f64 = outcomes.iter().filter(|((g, d), _)| *g >= 8 && *d <= 2).map(|(_, p)| p).sum();
+    assert!(close(hit, 0.154024, 1e-5), "{hit}"); // relic solve --level 18 --target 8 2
+}

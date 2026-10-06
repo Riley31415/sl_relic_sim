@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Relic Autoplayer",
+  "version": "0.1.0",
+  "description": "Plays Slayer Legend relic inheritance attempts with the exact solver, reading the game from the tab.",
+  "permissions": ["debugger", "sidePanel", "storage"],
+  "background": { "service_worker": "background.js" },
+  "side_panel": { "default_path": "panel.html" },
+  "action": { "default_title": "Open Relic Autoplayer" },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  }
+}

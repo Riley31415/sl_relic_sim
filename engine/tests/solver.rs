@@ -461,3 +461,68 @@ fn reaching_a_mark_is_all_or_nothing_on_amplification() {
         assert!(reach >= weighted - 1e-12, "{mark}%: {reach} vs {weighted}");
     }
 }
+
+#[test]
+fn a_settled_target_is_played_for_amplification() {
+    // all or nothing for 8+ glory, 2- despair at level 18; one glory slot
+    // left, 3 despair successes already: out of reach, every action scores 0
+    let mut solver = Solver::new(Config::for_level(18, Strategy::target(8, 2)).unwrap());
+    let lost = st(8, 5, 9, 3, 3, 4, 3);
+    assert_eq!(solver.value(lost).score, 0.0);
+    // the tie goes to amplification: a 35% training (usually a fail, the
+    // ladder up to 50%) before the glory roll, not glory at 35% + 10% now
+    assert_eq!(solver.best_action(lost), Choice::Act(Action::Train));
+    // while the box can still be hit, the same holds on its own merit
+    let open = st(8, 7, 9, 2, 3, 4, 3);
+    assert!(solver.value(open).score > 0.0);
+    assert_eq!(solver.best_action(open), Choice::Act(Action::Train));
+}
+
+/// P(finishing with glory >= g, despair <= d) following `play`'s choices from `s`.
+fn chance_of(play: &mut Solver, s: State, g: u8, d: u8) -> f64 {
+    match play.best_action(s) {
+        Choice::Done => f64::from(u8::from(s.gs >= g && s.ds <= d)),
+        Choice::Act(a) => play.transitions(s, a).iter().filter(|t| t.0 > 0.0).map(|&(p, n, _)| p * chance_of(play, n, g, d)).sum(),
+        _ => 0.0,
+    }
+}
+
+#[test]
+fn a_target_out_of_reach_is_played_for_the_nearest_box() {
+    // all or nothing for 7/1, but 2 despair successes already: 7/2 is the
+    // nearest result left, and it is played for as hard as if it were the
+    // target (amplification alone would settle for 6/2 more: 43% not 54%)
+    let mut for_7_1 = Solver::new(Config::for_level(18, Strategy::target(7, 1)).unwrap());
+    let mut for_7_2 = Solver::new(Config::for_level(18, Strategy::target(7, 2)).unwrap());
+    let s = st(7, 5, 9, 2, 2, 1, 0);
+    assert_eq!(for_7_1.value(s).score, 0.0);
+    let best = for_7_2.value(s).score;
+    assert!(close(best, 0.54, 1e-9), "{best}");
+    assert!(close(chance_of(&mut for_7_1, s, 7, 2), best, 1e-12));
+    assert!(close(for_7_1.value(s).near, best, 1e-12));
+    // and so from every state where 7/1 is gone and 7/2 is not
+    for gf in 0..=9 {
+        for gs in 0..=gf {
+            for df in 2..=9 {
+                for (ms, sp, tier) in [(0, 3, 1), (1, 6, 0), (2, 10, 2), (3, 8, 4)] {
+                    let s = st(gf, gs, df, 2, ms, sp, tier);
+                    let want = for_7_2.value(s).score;
+                    if want > 0.0 {
+                        assert!(close(chance_of(&mut for_7_1, s, 7, 2), want, 1e-9), "{s:?}");
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn settled_ties_change_nothing_but_what_follows_the_target() {
+    // a whole attempt for the target: P(hit) is the plain optimum's; the
+    // tie-breaks (the nearest box, then amplification) only shape the play
+    // once it is settled (relic solve --level 7 --target 5 1)
+    let mut solver = Solver::new(Config::for_level(7, Strategy::target(5, 1)).unwrap());
+    let a = solver.analyse(None);
+    assert!(close(a.p_target, 0.114972, 1e-6), "{}", a.p_target);
+    assert!(close(a.e_amplification, 16.377, 1e-3), "{}", a.e_amplification);
+}

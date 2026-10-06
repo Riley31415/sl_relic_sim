@@ -1,1 +1,4 @@
-/target/
+/engine/target/
+/extension/solver/target/
+/extension/chrome/relic.wasm
+/advisor/target/

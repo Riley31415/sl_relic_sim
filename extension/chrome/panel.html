@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Relic Autoplayer</title>
+  <link rel="stylesheet" href="panel.css">
+  <script type="module" src="panel.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Relic Autoplayer</h1>
+    <span id="status" class="pill">loading</span>
+  </header>
+
+  <section id="settings">
+    <label>Mode
+      <select id="mode">
+        <option value="advisor">Advisor: pick relics by the plan</option>
+        <option value="single">One relic: the settings below</option>
+      </select>
+    </label>
+    <label data-mode="advisor">Goal
+      <select id="goal">
+        <option value="19">Level 19</option>
+        <option value="20">Level 20</option>
+        <option value="20+43">20, then Demon Eye 43%</option>
+        <option value="20+46">20, then Demon Eye 46%</option>
+        <option value="20+48">20, then Demon Eye 48%</option>
+        <option value="20+50">20, then Demon Eye 50%</option>
+      </select>
+    </label>
+    <p class="note" data-mode="advisor">To finish an attempt already in progress that the advisor didn't start:</p>
+    <label>Inheritor level
+      <input id="level" type="number" min="1" max="28" step="1">
+    </label>
+    <label>Play for
+      <select id="kind">
+        <option value="max">Most amplification</option>
+        <option value="target">Target: glory &ge; G, despair &le; D</option>
+        <option value="reach">Amplification &ge; M%</option>
+      </select>
+    </label>
+    <div class="row" data-for="target">
+      <label>G <input id="glory" type="number" min="0" max="10"></label>
+      <label>D <input id="despair" type="number" min="0" max="10"></label>
+    </div>
+    <div class="row" data-for="reach">
+      <label>M % <input id="mark" type="number" min="0" max="50"></label>
+    </div>
+    <div class="row">
+      <label>Max attempts <input id="attempts" type="number" min="1" max="999"></label>
+      <label>Wipe penalty <input id="wipe" type="number" min="0" step="1"></label>
+    </div>
+    <label>Click delay, s (&plusmn;0.1)
+      <input id="clickDelay" type="number" min="0.1" max="10" step="0.1">
+    </label>
+    <label>Click as
+      <select id="clickMethod">
+        <option value="mouse">Mouse</option>
+        <option value="touch">Touch</option>
+      </select>
+    </label>
+  </section>
+
+  <section class="buttons">
+    <button id="start" class="primary">Start</button>
+    <button id="stop" disabled>Stop</button>
+    <button id="peek">Read screen</button>
+    <button id="save">Save frame</button>
+  </section>
+
+  <section id="ask" hidden>
+    <p id="askText">Which rate is on the buttons?</p>
+    <div id="askButtons"></div>
+  </section>
+
+  <section id="readout">
+    <div class="move" id="move">&mdash;</div>
+    <dl>
+      <dt>Screen</dt><dd id="screen">&mdash;</dd>
+      <dt>Board</dt><dd id="state">&mdash;</dd>
+      <dt>Rate</dt><dd id="rate">&mdash;</dd>
+      <dt>Expected</dt><dd id="expected">&mdash;</dd>
+    </dl>
+    <canvas id="view" width="320" height="360"></canvas>
+  </section>
+
+  <section>
+    <ol id="log"></ol>
+  </section>
+</body>
+</html>

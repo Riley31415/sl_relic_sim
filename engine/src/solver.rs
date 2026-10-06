@@ -274,6 +274,12 @@ pub enum Choice {
 pub struct Value {
     pub p_finish: f64,
     pub score: f64,
+    /// target strategies: the chance of ending in the nearest box still
+    /// reachable from here (the target itself while it can be hit) - what
+    /// breaks a tie in the objective
+    pub near: f64,
+    /// expected amplification %: what breaks a tie after that
+    pub amp: f64,
     pub choice: Choice,
 }
 
@@ -495,6 +501,19 @@ impl Solver {
         self.cfg.strategy.is_target() && glory >= self.cfg.want_glory() && despair <= self.cfg.allow_despair()
     }
 
+    /// Target strategies: how many steps a result is from the target box -
+    /// a glory success short or a despair success over is one step each
+    /// (so 7/2 is one step from 7/1, as is 6/1).
+    pub fn shortfall(&self, glory: u8, despair: u8) -> u8 {
+        self.cfg.want_glory().saturating_sub(glory) + despair.saturating_sub(self.cfg.allow_despair())
+    }
+
+    /// The fewest steps from the target any result reachable from `s` can
+    /// be: every glory slot left a success, no more despair.
+    fn nearest(&self, s: State) -> u8 {
+        self.shortfall(s.gs + (self.cfg.slots - s.gf), s.ds)
+    }
+
     /// What the solver steers by at a finished attempt.
     pub fn objective(&self, glory: u8, despair: u8) -> f64 {
         let s = &self.cfg.strategy;
@@ -512,21 +531,32 @@ impl Solver {
 
     // ---------------------------------------------------------------- solving
 
-    /// Compare (p_finish, score) pairs.  safety_first dodges the wipe before
-    /// looking at score; otherwise the two trade linearly, wipe_penalty 0
-    /// being the plain expected-score maximiser.
-    fn better(&self, cand: (f64, f64), best: (f64, f64)) -> bool {
-        if self.cfg.safety_first {
-            if cand.0 > best.0 + 1e-12 {
-                return true;
+    /// Compare (p_finish, score, near, amplification).  safety_first dodges
+    /// the wipe before looking at score; otherwise the two trade linearly,
+    /// wipe_penalty 0 being the plain expected-score maximiser.  Ties - an
+    /// all-or-nothing objective scores every action alike once its target is
+    /// met or out of reach - go to the better chance of the nearest box still
+    /// reachable (out of reach of 7/1 with 2 despair already: 7/2), then to
+    /// the more amplification; never at the target's expense, since they only
+    /// decide ties.
+    fn better(&self, cand: (f64, f64, f64, f64), best: (f64, f64, f64, f64)) -> bool {
+        const EPS: f64 = 1e-12;
+        let (c, b) = if self.cfg.safety_first {
+            if (cand.0 - best.0).abs() > EPS {
+                return cand.0 > best.0;
             }
-            if cand.0 < best.0 - 1e-12 {
-                return false;
-            }
-            return cand.1 > best.1 + 1e-12;
+            (cand.1, best.1)
+        } else {
+            let pen = self.cfg.wipe_penalty;
+            (cand.1 + pen * cand.0, best.1 + pen * best.0)
+        };
+        if (c - b).abs() > EPS {
+            return c > b;
         }
-        let pen = self.cfg.wipe_penalty;
-        cand.1 + pen * cand.0 > best.1 + pen * best.0 + 1e-12
+        if (cand.2 - best.2).abs() > EPS {
+            return cand.2 > best.2;
+        }
+        cand.3 > best.3 + EPS
     }
 
     /// Solve a state exactly: P(finish), expected score, the optimal choice.
@@ -538,24 +568,34 @@ impl Solver {
             return hit;
         }
         let result = if self.is_terminal(s) {
-            Value { p_finish: 1.0, score: self.objective(s.gs, s.ds), choice: Choice::Done }
+            let (score, amp) = (self.objective(s.gs, s.ds), self.amplification(s.gs, s.ds));
+            // a finished attempt is in its own nearest box
+            let near = f64::from(u8::from(self.cfg.strategy.is_target()));
+            Value { p_finish: 1.0, score, near, amp, choice: Choice::Done }
         } else {
+            let target = self.cfg.strategy.is_target();
+            let k = self.nearest(s);
             let mut best: Option<Value> = None;
             for action in self.legal_actions(s) {
-                let (mut p_finish, mut score) = (0.0, 0.0);
+                let (mut p_finish, mut score, mut near, mut amp) = (0.0, 0.0, 0.0, 0.0);
                 for (prob, next, _ok) in self.transitions(s, action) {
                     if prob != 0.0 {
                         let sub = self.value(next);
                         p_finish += prob * sub.p_finish;
                         score += prob * sub.score;
+                        amp += prob * sub.amp;
+                        // a step that puts this box out of reach ends nearer to nothing
+                        if target && self.nearest(next) == k {
+                            near += prob * sub.near;
+                        }
                     }
                 }
-                if best.is_none_or(|b| self.better((p_finish, score), (b.p_finish, b.score))) {
-                    best = Some(Value { p_finish, score, choice: Choice::Act(action) });
+                if best.is_none_or(|b| self.better((p_finish, score, near, amp), (b.p_finish, b.score, b.near, b.amp))) {
+                    best = Some(Value { p_finish, score, near, amp, choice: Choice::Act(action) });
                 }
             }
             // a dead end inherits nothing at all: 0 glory, 0 despair, the floor
-            best.unwrap_or(Value { p_finish: 0.0, score: 0.0, choice: Choice::DeadEnd })
+            best.unwrap_or(Value { p_finish: 0.0, score: 0.0, near: 0.0, amp: 0.0, choice: Choice::DeadEnd })
         };
         self.memo.insert(s.key(), result);
         result

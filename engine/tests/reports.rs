@@ -2,7 +2,9 @@
 //!
 //! The golden files are the reports as the original Python implementation
 //! printed them (the level-20 grid re-captured once the level 13-20 bonuses
-//! were known); the exact solver must reproduce them character for character.
+//! were known; the target reports once a settled target's ties went to
+//! amplification - the same P(hit), more amplification, fewer wipes); the
+//! exact solver must reproduce them character for character.
 
 use relic::format::pct3;
 use relic::heuristics;

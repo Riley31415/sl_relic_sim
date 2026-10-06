@@ -5,7 +5,7 @@ use std::sync::{Arc, LazyLock, RwLock};
 
 use rustc_hash::FxHashMap;
 
-use super::rules::Relic;
+use super::rules::{Bar, Relic};
 use crate::solver::{Config, Solver, Strategy};
 
 /// Which attempt: the inheritor level it is made at, and how it is played.
@@ -69,6 +69,45 @@ fn shared(key: TableKey) -> Arc<Table> {
     // solved outside the lock: two runs asking at once both solve, harmlessly
     let table = Arc::new(key.solve());
     SOLVED.write().expect("table cache").entry(key).or_insert(table).clone()
+}
+
+thread_local! {
+    static HITS: std::cell::RefCell<FxHashMap<(TableKey, Bar), f64>> = Default::default();
+}
+
+/// The chance an attempt played per `key` ends on a result meeting `bar`.
+pub fn hit_chance(key: TableKey, bar: Bar) -> f64 {
+    if let Some(p) = HITS.with(|h| h.borrow().get(&(key, bar)).copied()) {
+        return p;
+    }
+    let table = shared(key);
+    let mut before = 0.0;
+    let mut p = 0.0;
+    for (&value, &cum) in table.values.iter().zip(&table.cum) {
+        if bar.met_by(value) {
+            p += cum - before;
+        }
+        before = cum;
+    }
+    HITS.with(|h| h.borrow_mut().insert((key, bar), p));
+    p
+}
+
+/// Every (glory, despair) an attempt played per `key` can end on, with its
+/// probability.
+pub fn outcomes(key: TableKey) -> Vec<(Relic, f64)> {
+    let table = shared(key);
+    let mut before = 0.0;
+    table
+        .values
+        .iter()
+        .zip(&table.cum)
+        .map(|(&value, &cum)| {
+            let p = cum - before;
+            before = cum;
+            (value, p)
+        })
+        .collect()
 }
 
 /// A run's own view of the shared tables, so the hot loop does not touch the

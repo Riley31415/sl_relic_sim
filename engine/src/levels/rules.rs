@@ -62,6 +62,16 @@ impl Quest {
         glory.saturating_sub(g) + d.saturating_sub(despair)
     }
 
+    /// The gap once relic `i` is `new` instead.
+    pub fn gap_after(&self, states: &[Relic], i: usize, new: Relic) -> u32 {
+        let Quest::Total { glory, despair } = *self else { return 0 };
+        let (g, d) = totals(states);
+        let (old_g, old_d) = states[i];
+        let g = g + u32::from(new.0) - u32::from(old_g);
+        let d = d + u32::from(new.1) - u32::from(old_d);
+        glory.saturating_sub(g) + d.saturating_sub(despair)
+    }
+
     pub fn is_total(&self) -> bool {
         matches!(self, Quest::Total { .. })
     }
@@ -86,6 +96,10 @@ pub struct LevelRules {
     pub filler: Option<Bar>,
     /// banked relics: out of total work and filler
     pub locked: RelicSet,
+    /// relics a total's work goes to only when nothing else it needs is
+    /// affordable: those a later quest names, and the crit relic on the way
+    /// to the top (its stock is the tier farm's)
+    pub spare: RelicSet,
     /// relics the quest work goes to first, and whether the others must wait
     pub prefer: Option<(RelicSet, bool)>,
 }

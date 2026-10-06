@@ -1,0 +1,20 @@
+[package]
+name = "relic-wasm"
+version = "0.1.0"
+edition = "2024"
+description = "The relic solver as a plain WebAssembly module for the Chrome extension"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+relic = { path = "../../engine" }
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = "s"
+panic = "abort"
+
+# not a member of the main crate's (absent) workspace: builds on its own
+[workspace]

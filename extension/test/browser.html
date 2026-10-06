@@ -1,0 +1,69 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>browser smoke test</title>
+<pre id="out">running</pre>
+<script type="module">
+  // Run by test/browser.mjs in headless Chrome: the WebAssembly solver and
+  // the screen reader on pixels Chrome itself decoded.
+  import { RelicSolver } from '../chrome/lib/solver.js';
+  import { classify, boardState } from '../chrome/lib/vision.js';
+
+  const out = {};
+  try {
+    const bytes = await (await fetch('../chrome/relic.wasm')).arrayBuffer();
+    // advice as the very first call on a fresh module: the call grows its
+    // memory, which once left the answer unreadable
+    const first = await RelicSolver.load(bytes);
+    out.firstAdvice = first.advise({ level: 20, tier: 46 }, 18,
+      [[7, 1], [7, 1], [8, 3], [8, 2], [8, 2], [7, 1], [8, 2], [8, 3], [7, 1], [9, 1], [7, 2], [8, 3]],
+      [207, 115, 135, 92, 109, 28, 156, 105, 36, 180, 4, 27]);
+    const solver = await RelicSolver.load(bytes);
+    out.board = solver.board(19);
+    solver.configure(19, { kind: 'max' });
+    const start = { gf: 1, gs: 1, df: 1, ds: 0, ms: 9, sp: 10 };
+    out.startMove = solver.best(start, 0);
+    out.startExpected = solver.expected(start, 0);
+    const shot = { gf: 2, gs: 2, df: 1, ds: 0, ms: 8, sp: 9 };
+    out.shotMove = solver.best(shot, 2);
+
+    // the advisor, on the board of test/images/main-counts.png (stock as
+    // in the repo's advice tests)
+    const board = [[7, 1], [7, 1], [8, 3], [8, 2], [8, 2], [7, 1], [8, 2], [8, 3], [7, 1], [9, 1], [7, 2], [8, 3]];
+    const stock = [207, 115, 135, 92, 109, 28, 156, 105, 36, 180, 4, 137];
+    const goal = { level: 20, tier: 46 };
+    out.advice = solver.advise(goal, 18, board, stock);
+    out.keeps = [[8, 2], [7, 1], [7, 2]].map(([glory, despair]) => solver.keeps(goal, 18, board, stock, { glory, despair }));
+    out.pity = [solver.pityNeeded(19), solver.pityGain(18)];
+    solver.configure(18, out.advice.objective);
+    out.adviceMove = solver.best({ gf: 1, gs: 1, df: 0, ds: 0, ms: 9, sp: 10 }, 1);
+
+    // a settled target: one glory slot left, 3 despair successes already -
+    // 8+/2- is out of reach, every move scores 0, and the solver's tie-breaks
+    // play for the nearest box (6/3: the glory roll landing), then
+    // amplification: it trains at 35%, as playing for amplification does
+    const settled = { gf: 8, gs: 5, df: 9, ds: 3, ms: 3, sp: 4 };
+    solver.configure(18, { kind: 'target', glory: 8, despair: 2 });
+    out.settled = { odds: solver.expected(settled, 3), move: solver.best(settled, 3) };
+    solver.configure(18, { kind: 'max' });
+    out.settled.ampMove = solver.best(settled, 3);
+    // and the same slot while the box can still be hit (7 glory successes so far)
+    solver.configure(18, { kind: 'target', glory: 8, despair: 3 });
+    out.open = solver.best({ gf: 8, gs: 7, df: 9, ds: 3, ms: 3, sp: 4 }, 3);
+
+    const img = new Image();
+    img.src = 'images/board-l19.png';
+    await img.decode();
+    const canvas = new OffscreenCanvas(1917, 915);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#18181b';
+    ctx.fillRect(0, 0, 1917, 915);
+    ctx.drawImage(img, 736, 84);
+    const screen = classify(ctx.getImageData(0, 0, 1917, 915));
+    out.kind = screen.kind;
+    out.state = boardState(screen, 9, 10);
+    out.buttons = screen.buttons;
+  } catch (err) {
+    out.error = String(err.stack || err);
+  }
+  document.getElementById('out').textContent = 'RESULT ' + JSON.stringify(out);
+</script>

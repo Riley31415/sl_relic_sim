@@ -1034,7 +1034,7 @@ fn strategy_sections(game: &Game, g_rows: &[Row], l_rows: &[Row]) -> Vec<String>
         String::new(),
         "### Look-ahead mode".to_string(),
         String::new(),
-        format!("Every row of the look-ahead table has its own plan (all saved in `src/levels/lookahead_plans.txt`); this is the one for level {MAX_LEVEL}. What it does differently from greedy:"),
+        format!("Every row of the look-ahead table has its own plan (all saved in `engine/src/levels/lookahead_plans.txt`); this is the one for level {MAX_LEVEL}. What it does differently from greedy:"),
         String::new(),
     ]);
     out.extend(lookahead_highlights(game, &greedy, &look, g_rows, l_rows));
