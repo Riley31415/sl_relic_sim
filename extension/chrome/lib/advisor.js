@@ -18,7 +18,9 @@
 // read it rather than guess.
 
 import { Runner, Halt, fmtMemory } from './runner.js';
-import { chooseMemory } from './logic.js';
+import { chooseMemory, describeObjective } from './logic.js';
+
+export { describeObjective };
 
 export const RELICS = [
   "Giant's Right Hand", 'Demon Eye of Weakness', 'Oath of Immortality', 'Sacred Tree of Rebirth',
@@ -28,20 +30,6 @@ export const RELICS = [
 const PER_ATTEMPT = 10;
 const PITY_CHECK = 0.98; // estimated this full: go and read the bar
 const SAVED_FOR = 60 * 60 * 1000; // an attempt saved longer ago than this is not trusted
-
-/** How an attempt is played, in words. */
-export function describeObjective(o) {
-  switch (o.kind) {
-    case 'target':
-      return `all or nothing for ${o.glory}+ glory${o.despair === null ? '' : ` with ${o.despair} or less despair`}`;
-    case 'reach':
-      return `all or nothing for +${o.mark}% or more`;
-    case 'score':
-      return `the most of ${o.wGlory} a glory success + ${o.wDespair} a clean despair slot`;
-    default:
-      return 'the most amplification';
-  }
-}
 
 export class Advisor extends Runner {
   /**
@@ -117,24 +105,27 @@ export class Advisor extends Runner {
 
   /** Switch the main page to `view` with the circular-arrows icon. */
   async toggle(frame, view) {
-    await this.click(frame.screen.toggle, frame, `the ${view} view`);
-    return (await this.waitFor((f) => f.screen.kind === 'main' && f.screen.view === view, 8000)) ?? this.lost(`the ${view} view`);
+    return this.clickFor(frame, (s) => s.toggle, `the ${view} view toggle`,
+      (f) => f.screen.kind === 'main' && f.screen.view === view, `the ${view} view`);
   }
 
   /** Click relic `i`'s tile; Hero's Legacy should follow. */
   async openRelic(frame, screen, i, visiting) {
     this.at = i;
     this.visiting = visiting;
-    await this.click(screen.tiles[i], frame, RELICS[i]);
-    return (await this.waitFor((f) => f.screen.kind === 'legacy', 8000)) ?? this.lost(`${RELICS[i]}'s Hero's Legacy`);
+    return this.clickFor(frame, (s) => s.tiles?.[i], RELICS[i], (f) => f.screen.kind === 'legacy', `${RELICS[i]}'s Hero's Legacy`);
   }
 
   /** The plan's next step from what the main page and the visits showed. */
   advise() {
-    return this.solver.advise(this.goal, this.level, this.states, this.stock);
+    // the pity matters to a plan that rolls spare relics only once they can fill the bar
+    return this.solver.advise(this.goal, this.level, this.states, this.stock, this.pity);
   }
 
   async decide(frame, screen) {
+    if (this.level > this.goal.level) {
+      throw new Halt(`Inheritor level ${this.level} is past the goal (level ${this.goal.level}) - pick a higher goal, then press Start again.`);
+    }
     if (++this.idle > 3) throw new Halt('The advisor keeps going back and forth without an attempt - stopped.');
     const a = this.advise();
     const goal = `level ${a.goal}`;
@@ -157,7 +148,7 @@ export class Advisor extends Runner {
     }
     const why = a.step === 'farm' ? 'farming the crit relic' : `for ${goal}`;
     const bar = a.bar ? ` toward ${a.bar.glory}${a.bar.despair === null ? '' : `/${a.bar.despair}`}` : '';
-    this.ui.log(`Advisor: ${RELICS[a.relic]} (${this.stock[a.relic]} on hand), ${why}${bar} - played ${describeObjective(a.objective)}${a.closer ? ', keeping any roll that closes the gap' : ''}.`, 'good');
+    this.ui.log(`Advisor: ${RELICS[a.relic]} (${this.stock[a.relic]} on hand), ${why}${bar} - ${describeObjective(a.objective)}, keeping a roll that does better.`, 'good');
     return this.openRelic(frame, screen, a.relic, false);
   }
 
@@ -206,7 +197,7 @@ export class Advisor extends Runner {
     }
 
     // working this relic: another attempt, while the plan still picks it
-    if (this.finished >= this.settings.attempts) {
+    if (this.finished >= this.attempts) {
       throw new Halt(`Done: ${this.finished} attempt(s). ${RELICS[this.at]}: ${fmtMemory(memory)}, ${stock} on hand.`);
     }
     if (!this.pityRead && this.pity >= PITY_CHECK) return this.back(frame, 'the pity bar may be nearly full - reading it');
@@ -215,15 +206,17 @@ export class Advisor extends Runner {
     if (stock < PER_ATTEMPT) return this.back(frame, `only ${stock} on hand`);
 
     this.useLevel(this.level, a.objective);
-    this.plan = { advice: a, states: this.states.map((x) => [...x]), stock: [...this.stock] };
+    this.ui.useSettings?.({ level: this.level, objective: a.objective });
+    // what this roll is, for its Keep or Replace: the keep rule needs nothing else
+    const roll = { horizon: a.horizon ?? null, goal: a.goal, relic: a.relic, bar: a.bar ?? null, farm: a.step === 'farm' };
+    this.plan = { advice: a, roll, states: this.states.map((x) => [...x]), stock: [...this.stock] };
     await this.ui.saveAttempt?.({
-      at: Date.now(), goal: this.goal, level: this.level, relic: this.at, objective: a.objective,
+      at: Date.now(), goal: this.goal, level: this.level, relic: this.at, objective: a.objective, roll,
       states: this.plan.states, stock: this.plan.stock, pity: this.pity,
     });
     const filler = a.step === 'filler' ? 'PITY FILLER, ' : '';
-    this.ui.log(`${RELICS[this.at]}: ${fmtMemory(memory)}. Clicking Inheritance (attempt ${this.finished + 1} of ${this.settings.attempts}; ${filler}${describeObjective(a.objective)}).`);
-    await this.click(s.button, frame, 'Inheritance');
-    const next = (await this.waitFor((f) => f.screen.kind === 'board', 10000)) ?? this.lost('the attempt to start');
+    this.ui.log(`${RELICS[this.at]}: ${fmtMemory(memory)}. Clicking Inheritance (attempt ${this.ordinal()}; ${filler}${describeObjective(a.objective)}).`);
+    const next = await this.clickFor(frame, (sc) => sc.button, 'Inheritance', (f) => f.screen.kind === 'board', 'the attempt to start');
     this.tier = null;
     return next;
   }
@@ -233,8 +226,7 @@ export class Advisor extends Runner {
     if (why) this.ui.log(`Back to the main page: ${why}.`);
     if (!frame.screen.back) throw new Halt("Cannot find Hero's Legacy's return button - stopped.");
     this.at = null;
-    await this.click(frame.screen.back, frame, 'back');
-    return (await this.waitFor((f) => f.screen.kind === 'main', 8000)) ?? this.lost('the main page');
+    return this.clickFor(frame, (s) => s.back, 'back', (f) => f.screen.kind === 'main', 'the main page');
   }
 
   // ------------------------------------------------------------ an attempt in progress
@@ -247,13 +239,13 @@ export class Advisor extends Runner {
   async resume() {
     if (this.board) return;
     const saved = await this.ui.loadAttempt?.();
-    const fresh = saved && Date.now() - saved.at < SAVED_FOR && saved.goal?.level === this.goal.level && (saved.goal.tier ?? 0) === (this.goal.tier ?? 0);
+    const fresh = saved?.roll && 'horizon' in saved.roll && Date.now() - saved.at < SAVED_FOR && saved.goal?.level === this.goal.level && (saved.goal.tier ?? 0) === (this.goal.tier ?? 0);
     if (fresh) {
       Object.assign(this, { level: saved.level, at: saved.relic, states: saved.states, stock: [...saved.stock], pity: saved.pity });
       // the memory to beat: what lets a hopeless attempt be abandoned at once
       const [glory, despair] = saved.states[saved.relic];
       this.current = { glory, despair };
-      this.plan = { states: saved.states, stock: saved.stock };
+      this.plan = { roll: saved.roll, states: saved.states, stock: saved.stock };
       this.useLevel(saved.level, saved.objective);
       this.ui.log(`Finishing the ${RELICS[saved.relic]} attempt the advisor started: ${describeObjective(saved.objective)}, kept the plan's way.`);
       return;
@@ -285,8 +277,8 @@ export class Advisor extends Runner {
   choose(current, fresh) {
     const p = this.plan;
     if (!p) return chooseMemory(this.objective, current, fresh); // an attempt it did not start
-    const keepsNew = this.solver.keeps(this.goal, this.level, p.states, p.stock, fresh);
-    if (keepsNew === null) throw new Halt('The plan has no keep rule for this attempt - choose Keep or Replace yourself.');
+    const keepsNew = this.solver.keepsRoll(p.roll, p.states, fresh);
+    if (keepsNew === null) throw new Halt('No keep rule for this attempt - choose Keep or Replace yourself.');
     return keepsNew ? 'replace' : 'keep';
   }
 

@@ -1,48 +1,51 @@
-# Relic inheritance - playing the late levels
+# Relic inheritance - strategy
 
-How to play an inheritance attempt from inheritor level 12 onward, on the way to
-level 20, and what changes once level 20 unlocks the 10th slot. What each level
-costs in diamonds is in [LEVELS.md](LEVELS.md); farming a crit relic is in
-[COST.md](COST.md).
+How to climb the inheritor from level 1 to any goal - a level from 2 to 20, or
+level 20 plus a Demon Eye of Weakness farmed to 43, 46, 48 or 50% - and how to
+play a single inheritance attempt on the way. What every level costs in
+diamonds, goal by goal, is in [LEVELS.md](LEVELS.md); farming a crit relic is
+in [COST.md](COST.md).
 
-Every number here is exact: the solver enumerates every branch of an attempt
-and weights it by its probability, rather than sampling.
+Every number about a single attempt is exact: the solver enumerates every
+branch of an attempt and weights it by its probability, rather than sampling.
+The climb's costs are simulated (20,000 runs).
 
-## Running it
+## The board at every level
 
-```
-cargo install --path .              # once: builds `relic` and puts it on your PATH
-relic solve --level 16              # exact solve, distribution, policy, safety trade-off
-relic solve --level 12 --target 7 2 # chase an all-or-nothing target (the level-13 quest)
-relic solve --level 20 --amp-table  # P(each glory/despair combination) at level 20
-relic solve --all-levels            # one line per level, 1-20
-relic heuristics --level 16         # the hand-played rule vs the optimum
-relic levels --strategy lookahead   # the whole climb, level by level
-```
-
-## The board from level 12 to 20
-
-| level | memory slots | spirit power | glory rate | despair rate | starts with | first rate | average amplification | per slot | wipe chance |
+| level | memory slots | spirit power | glory rate | despair rate | starts with | first rate | average amplification | best possible | wipe chance |
 |---|---|---|---|---|---|---|---|---|---|
-| 12 | 8 | 10 | +6% | -6% | - | 80% | 23.14% | 57.8% | 2.55% |
-| 13 | 8 | 10 | +8% | -6% | - | 80% | 23.73% | 59.3% | 2.60% |
-| 14 | 8 | 10 | +8% | -8% | - | 80% | 24.09% | 60.2% | 2.44% |
-| 15 | 8 | 10 | +8% | -8% | 1 glory success | 65% | 24.55% | 61.4% | 2.48% |
-| 16 | 9 | 10 | +8% | -8% | 1 glory success | 65% | 26.23% | 58.3% | 4.49% |
-| 17 | 9 | 10 | +10% | -8% | 1 glory success | 65% | 26.77% | 59.5% | 4.35% |
-| 18 | 9 | 10 | +10% | -10% | 1 glory success | 65% | 27.24% | 60.5% | 4.32% |
-| 19 | 9 | 10 | +10% | -10% | 1 glory success, 1 despair fail | 80% | 30.74% | 68.3% | 0.98% |
-| 20 | 10 | 10 | +10% | -10% | 1 glory success, 1 despair fail | 80% | 33.10% | 66.2% | 2.25% |
+| 1 | 5 | 8 | +0% | +0% | - | 80% | 13.12% | 25% | 0.36% |
+| 2 | 5 | 8 | +2% | +0% | - | 80% | 13.55% | 25% | 0.39% |
+| 3 | 5 | 8 | +2% | -2% | - | 80% | 13.73% | 25% | 0.35% |
+| 4 | 6 | 8 | +2% | -2% | - | 80% | 16.07% | 30% | 2.09% |
+| 5 | 6 | 9 | +2% | -2% | - | 80% | 16.10% | 30% | 1.99% |
+| 6 | 6 | 9 | +4% | -2% | - | 80% | 16.58% | 30% | 2.06% |
+| 7 | 6 | 9 | +4% | -4% | - | 80% | 16.81% | 30% | 2.02% |
+| 8 | 7 | 9 | +4% | -4% | - | 80% | 18.53% | 35% | 4.95% |
+| 9 | 7 | 10 | +4% | -4% | - | 80% | 19.97% | 35% | 0.90% |
+| 10 | 7 | 10 | +6% | -4% | - | 80% | 20.54% | 35% | 0.94% |
+| 11 | 7 | 10 | +6% | -6% | - | 80% | 20.81% | 35% | 0.88% |
+| 12 | 8 | 10 | +6% | -6% | - | 80% | 23.14% | 40% | 2.55% |
+| 13 | 8 | 10 | +8% | -6% | - | 80% | 23.73% | 40% | 2.60% |
+| 14 | 8 | 10 | +8% | -8% | - | 80% | 24.09% | 40% | 2.44% |
+| 15 | 8 | 10 | +8% | -8% | 1 glory success | 65% | 24.55% | 40% | 2.48% |
+| 16 | 9 | 10 | +8% | -8% | 1 glory success | 65% | 26.23% | 45% | 4.49% |
+| 17 | 9 | 10 | +10% | -8% | 1 glory success | 65% | 26.77% | 45% | 4.35% |
+| 18 | 9 | 10 | +10% | -10% | 1 glory success | 65% | 27.24% | 45% | 4.32% |
+| 19 | 9 | 10 | +10% | -10% | 1 glory success, 1 despair fail | 80% | 30.74% | 45% | 0.98% |
+| 20 | 10 | 10 | +10% | -10% | 1 glory success, 1 despair fail | 80% | 33.10% | 50% | 2.25% |
 
 "First rate" is the chance the attempt opens on. "Average amplification" is one
 attempt played for the most amplification (+5% a glory success, -2% a despair
-success, floored at 0%); "per slot" is that as a share of a perfect bar.
+success, floored at 0%); "best possible" is a full glory bar with no despair.
 
-Two kinds of level shape the late boards:
+Two kinds of level shape the boards:
 
-- **Slots cost fuel.** Spirit power stops growing at level 9, so every slot
-  added after that has to be paid for with mental training. The wipe chance
-  jumps at levels 16 and 20, the two levels that add a slot.
+- **Slots cost fuel.** Every slot added (levels 4, 8, 12, 16 and 20) has to be
+  filled from the same spirit power, so the wipe chance jumps at each of
+  them - to 4.95% at level 8, the worst board in the game. Spirit power grows
+  only at levels 5 and 9 and stops at 10, so from level 12 on every new slot
+  is paid for with mental training.
 - **Head starts save fuel, but move the rate like real results.** From level
   15 every attempt starts with one glory slot already a success, and from
   level 19 one despair slot already a failure. Each is a slot that costs no
@@ -55,44 +58,143 @@ Two kinds of level shape the late boards:
   10 spirit power, only 3 successful trainings needed, an 80% start, and a
   wipe in 1 attempt in 100.
 
-## What each late level-up asks of an attempt
+## Every goal
 
-A level is reached with attempts made on the level before it, so the climb
-from 12 to 20 is played on 8-slot boards (levels 12-15) and 9-slot boards
-(levels 16-19). The 10th slot never takes part.
+A level is reached with attempts made on the level before it: level 13 with
+attempts on the level-12 board, and so on. Each goal has its own plan - the
+cheapest route to it, found by the look-ahead search - so what a level costs
+depends on what lies beyond it. The requirement is what the board must show
+to level up; pity levels up without it.
 
-The cheapest route there ([LEVELS.md](LEVELS.md), look-ahead mode) plays the
-steps like this:
-
-| to level | requirement | attempts are played for | diamonds | by pity |
+| goal | requirement | total diamonds | the last level-up | reached by pity |
 |---|---|---|---|---|
-| 13 | Mermaid Tear, Sky Eye, Mountain Crown at 7+ / 2- | **all or nothing** for 7+ / 2-: lands 14.1% of the time on the level-12 board | 380K | 5% |
-| 14 | 80 / 20 in total | **max glory + min despair**, repairing the board | 2.7K | 20% |
-| 15 | 83 / 20 | max glory + min despair | 18K | 27% |
-| 16 | 85 / 20 | max glory + min despair | 40K | 24% |
-| 17 | 89 / 21 | max glory + min despair | 65K | 24% |
-| 18 | 91 / 20 | max glory + min despair | 71K | 15% |
-| 19 | 94 / 19 | **all or nothing** for the one-step repair bar | 127K | 42% |
-| 20 | 96 / 16 | all or nothing for the one-step repair bar | 149K | 37% |
+| 2 | Giant Hand: 3+ / any | 47K | 47K | 59% |
+| 3 | Demon Eye, Immortal Oath: 3+ / 2- | 78K | 30K | 62% |
+| 4 | all twelve together: 25+ / 21- | 78K | 0.5K | 0% |
+| 5 | Sacred Tree, Lightning Ring, Golden Star: 5+ / 2- | 142K | 64K | 89% |
+| 6 | all twelve: 44+ / 18- | 179K | 37K | 13% |
+| 7 | every relic: 4+ / 2- | 258K | 79K | 60% |
+| 8 | all twelve: 59+ / 17- | 327K | 69K | 37% |
+| 9 | Archer Seal, Night Veil, Eternal Spark: 6+ / 2- | 421K | 94K | 87% |
+| 10 | all twelve: 68+ / 19- | 485K | 64K | 24% |
+| 11 | all twelve: 71+ / 18- | 587K | 102K | 41% |
+| 12 | all twelve: 73+ / 17- | 696K | 109K | 41% |
+| 13 | Mermaid Tear, Sky Eye, Mountain Crown: 7+ / 2- | 814K | 118K | 85% |
+| 14 | all twelve: 80+ / 20- | 868K | 54K | 11% |
+| 15 | all twelve: 83+ / 20- | 963K | 95K | 19% |
+| 16 | all twelve: 85+ / 20- | 1.07M | 107K | 21% |
+| 17 | all twelve: 89+ / 21- | 1.15M | 83K | 19% |
+| 18 | all twelve: 91+ / 20- | 1.23M | 75K | 14% |
+| 19 | all twelve: 94+ / 19- | 1.36M | 127K | 30% |
+| 20 | all twelve: 96+ / 16- | 1.51M | 158K | 39% |
+| 20 + 43% | Demon Eye at 43% | 1.56M | 50K | - |
+| 20 + 46% | Demon Eye at 46% | 1.68M | 119K | - |
+| 20 + 48% | Demon Eye at 48% | 1.96M | 279K | - |
+| 20 + 50% | Demon Eye at 50% | 5.31M | 3.35M | - |
 
-Three habits carry the late climb:
+"The last level-up" is what the goal costs over the goal before it, each from
+its own plan.
 
-- **Level 13 is where to spend.** It is the only late level that names relics,
-  and 7 glory with at most 2 despair on an 8-slot board is a 1-in-7 shot. Put
-  no stock into filler during it: everything left over is what makes levels
-  14 and 15 nearly free.
-- **Levels 14-18 are repairs, not rebuilds.** The board already sits near each
-  total; ask each relic for one step (shed a despair if the budget is blown,
-  otherwise add a glory), play the attempt for max glory and min despair, and
-  keep any roll that closes the gap even if it is not better on both bars.
-  Levels 16-18 cost more than they look because their attempts are made on
-  the 65%-start boards of levels 15-17, the weakest late boards per slot.
-- **Levels 19 and 20 tighten despair** (19, then 16) while still asking for
-  more glory. Play each attempt all or nothing for the single step that relic
-  is being asked for. Level 19 is reached with attempts on the level-18 board,
-  which opens at 65%; level 20 with attempts on the level-19 board, back at
-  80% and the best board in the climb. About 4 runs in 10 still finish level
-  19 by pity, and a little over a third finish level 20 that way.
+How the plans differ by goal:
+
+- **The goal's own level spends everything.** Nearly every goal's plan rolls
+  spare relics for the pity at its last step: whatever is left after the goal
+  is worth nothing to it, so it goes into the pity bar.
+- **A named-relic goal is usually reached by pity.** Three named relics at a
+  bar - 5+ / 2-, 6+ / 2-, 7+ / 2- - is a long shot on the board it is rolled
+  on, so goals 5, 9 and 13 finish by pity 85-89% of the time, and goals 2, 3
+  and 7 about 60%.
+- **A later goal buys more early.** On the way to a far goal, the plan
+  summons where a near goal would roll spare relics for pity, and banks the
+  relics the next named level needs: reaching level 5 costs 142K when 5 is
+  the goal, but 358K on the way to 20 + 43%. The stock bought early is spent
+  on the later levels, which is why they come cheap.
+- **The Demon Eye tiers share the climb.** 20 + 43% and 20 + 46% use the same
+  plan as far as level 20; 48% and 50% build some totals levels to a bar
+  instead of repairing them. Past 46% each point gets much dearer: 50% - a
+  full glory bar and no despair - costs 3.35M more than 48%.
+
+## The climb to 20 + 43%
+
+The cheapest route to level 20 and a 43% Demon Eye, the extension's default
+goal, step by step. The route to 20 + 46% is the same as far as level 20. Diamonds are what each level-up costs on this route; the
+strategy names are the extension's.
+
+| to level | requirement | how attempts are played | diamonds | by pity |
+|---|---|---|---|---|
+| 2 | Giant Hand: 3+ / any | **maximize glory, minimize despair above a target**: the best chance of 3+ glory | 64K | 0% |
+| 3 | Demon Eye, Immortal Oath: 3+ / 2- | above a target: the best chance of 3+ / 2- on each | 56K | 0% |
+| 4 | 25+ / 21- in total | build relics to 3 / 2; **maximize glory, minimize despair until a limit**, toward the totals ahead | 0.4K | 0% |
+| 5 | Sacred Tree, Lightning Ring, Golden Star: 5+ / 2- | above a target: 5+ / 2- on each | 237K | 13% |
+| 6 | 44+ / 18- | repair; until a limit, toward this level's totals | 1.5K | 2% |
+| 7 | every relic: 4+ / 2- | above a target: 4+ / 2- on every relic short of it | 42K | 0% |
+| 8 | 59+ / 17- | repair; until a limit | 17K | 23% |
+| 9 | Archer Seal, Night Veil, Eternal Spark: 6+ / 2- | above a target: 6+ / 2- on each | 312K | 6% |
+| 10 | 68+ / 19- | build relics to 5 / 2; until a limit, toward the totals ahead | 80K | 10% |
+| 11 | 71+ / 18- | repair; until a limit, toward the totals ahead | 8K | 18% |
+| 12 | 73+ / 17- | repair; until a limit | 36K | 21% |
+| 13 | Mermaid Tear, Sky Eye, Mountain Crown: 7+ / 2- | above a target: 7+ / 2- on each | 352K | 5% |
+| 14 | 80+ / 20- | repair; until a limit, toward the totals ahead | 2.6K | 7% |
+| 15 | 83+ / 20- | repair; until a limit | 13K | 11% |
+| 16 | 85+ / 20- | repair; until a limit | 26K | 14% |
+| 17 | 89+ / 21- | repair; until a limit, toward the totals ahead | 37K | 20% |
+| 18 | 91+ / 20- | repair; until a limit, toward the totals ahead | 49K | 9% |
+| 19 | 94+ / 19- | repair; until a limit, toward the totals ahead | 83K | 24% |
+| 20 | 96+ / 16- | repair; until a limit | 108K | 30% |
+| 20 + 43% | Demon Eye at 43% | **maximize amplification above a target**, 43% as the Minimum Useful Amplification | 37K | - |
+
+The whole route costs 1.56M diamonds on average: 1.53M to level 20, then
+37K to bring the Demon Eye to 43%. Farming to 46% instead costs 157K
+from level 20, 1.68M in all.
+
+The climb rests on a few habits:
+
+- **The named levels are where the money goes.** Levels 2, 3, 5, 9 and 13 ask
+  for named relics at a bar, and take two thirds of everything spent on the
+  way to 20 - level 13 alone, 7 glory with at most 2 despair on an 8-slot
+  board (a 1-in-7 shot), nearly a quarter. Each attempt on a named relic
+  plays for the best chance of the whole bar - missing by one is worth almost
+  nothing - and only once that is out of reach for the attempt does it play
+  on toward the totals.
+- **The totals levels after them come cheap.** A named level leaves the board
+  well built, so the totals level after it costs little: level 4 after 3,
+  level 6 after 5, level 14 after 13.
+- **Build early, repair late.** The early totals levels 4 and 10 raise every
+  relic to a bar - 3 / 2, then 5 / 2 - and level 7 asks every relic for
+  4 / 2 outright. From level 11 on the board already sits near each total,
+  so the levels are repairs: while the total despair is over the budget,
+  every relic with 2 or more despair is asked for one less (the worst are
+  the easiest steps); otherwise every relic with room is asked for one more
+  glory. Of those, the relic rolled is whichever closes the most of the gap
+  per attempt.
+- **Every attempt on a totals level closes the gap, step by step.** It is
+  played to maximize glory, minimize despair until a limit: the limit is
+  what that one relic would have to become to bring the board to the totals,
+  every glory gained or despair shed toward it counts, and past it the
+  attempt goes for more glory and less despair, weighed by what the totals
+  still need. A roll is kept if it brings the board nearer the totals, or as
+  near with more glory and less despair - 9/0 beats a 9/1 that already
+  clears the level. When every relic meets its bar and the totals are still
+  short, the bars go a step further; at level 10 a relic traded off its bar
+  for a result the keep rule ranks as high counts as meeting it.
+- **Look ahead where it pays.** At levels 4, 10, 11, 14 and 17-19 the plan
+  aims at the totals ahead rather than the level's own: the most glory and
+  the least despair any level up to the goal asks. On the way to 20 that is
+  96 / 16, and level 20's despair cap of 16 is the tightest in the climb, so
+  despair shed early is despair not paid for later.
+- **Summon rather than roll for pity.** When nothing the work needs has 10 on
+  hand, the plan summons instead of rolling spare relics just to fill the
+  pity bar - except at level 20, where it rolls them when the spare stock can
+  fill the bar within 30 attempts. About 1 run in 4 still finishes level 19
+  by pity, and 3 in 10 finish level 20 that way.
+
+Every decision is made from the board as it stands - the relics, the stock
+and the pity bar - with nothing remembered from earlier attempts, so the
+advisor and the extension play exactly as these numbers were simulated.
+
+At level 20 the plan converts every leftover relic into Demon Eyes (10 of a
+type for 7) and farms it, summoning when short, every attempt played for the
+best chance of 43% and then the most amplification.
 
 ## Playing one attempt on a 9-slot board (levels 16-18)
 
@@ -296,7 +398,6 @@ floor: the 2.2% of attempts that wipe, plus any that wash out below zero.
 <text class="ac-t ac-muted" x="275.5" y="266" text-anchor="middle">amplification (+5% per glory success, -2% per despair success)</text>
 <line class="ac-mean" x1="348.4" y1="20" x2="348.4" y2="236" stroke-dasharray="3 3" stroke-width="1.5"/>
 <text class="ac-b ac-ink" x="353.4" y="14">mean 33.1%</text>
-<text class="ac-b ac-ink" x="356.5" y="70.1" text-anchor="middle">15.2%</text>
 <text class="ac-b ac-wipe" x="56.5" y="204.4" text-anchor="start">wipe 2.25%</text>
 </svg>
 
@@ -320,3 +421,16 @@ them.</sub>
    move it the same way before the first action: the level-15 glory success
    puts levels 15-18 at 65%, and the level-19 despair failure brings 19 and 20
    back to 80%.
+
+## Running it
+
+```
+cargo install --path engine         # once: builds `relic` and puts it on your PATH
+relic solve --level 16              # exact solve, distribution, policy, safety trade-off
+relic solve --level 12 --target 7 2 # chase an all-or-nothing target (the level-13 quest)
+relic solve --level 20 --amp-table  # P(each glory/despair combination) at level 20
+relic solve --all-levels            # one line per level, 1-20
+relic heuristics --level 16         # the hand-played rule vs the optimum
+relic levels --strategy lookahead   # the whole climb, level by level
+relic levels --cost 20+43           # the mean diamonds to a goal under its saved plan
+```

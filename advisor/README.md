@@ -17,7 +17,7 @@ cargo test --release
 ## Use
 
 ```
-target/release/relic-advisor shot.png                 # toward level 20 + 46% crit amp
+target/release/relic-advisor shot.png                 # toward level 20 + 43% crit amp
 target/release/relic-advisor shot.png --target 20+48  # another look-ahead target (2-20, 20+43/46/48/50)
 target/release/relic-advisor shot.png --level 19      # if the level can't be read
 target/release/relic-advisor --level 18 --board 7/1/207 7/1/115 ...   # typed in, screen order

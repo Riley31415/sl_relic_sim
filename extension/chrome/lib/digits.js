@@ -308,6 +308,19 @@ export function numberGlyphs(box, mode, max, s = 1) {
   const ps = glyphs(part);
   const H = Math.max(0, ...ps.map((g) => g.h));
   const out = pairs(part, ps.filter((g) => g.h >= 0.7 * H));
+  // the cut can leave the slash's foot on the last digit ("116/10", the 6
+  // touching it): shave it off a column at a time until the digit reads
+  const last = out[out.length - 1];
+  if (last && readDigit(last) === null) {
+    for (let k = 1; k <= Math.ceil(0.35 * last.h); k++) {
+      const c = cut(part, last.x0, last.x1 - k, last.y0, last.y1);
+      if (c.w < 0.4 * c.h) break;
+      if (readDigit(c) !== null) {
+        out[out.length - 1] = c;
+        break;
+      }
+    }
+  }
   return out.length <= max ? out : null;
 }
 

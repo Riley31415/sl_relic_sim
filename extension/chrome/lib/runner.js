@@ -13,6 +13,7 @@
 import { classify, boardState, boardRate, isForbidden } from './vision.js';
 import {
   TIER_PERCENT, amplification, chooseMemory, hitsObjective, inferOutcome, isStartState, moved, nextTier, show,
+  strategySettings,
 } from './logic.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -20,9 +21,24 @@ const TIMING = {
   poll: 250, // between looks while waiting
   settle: 900, // a screen must hold this long to count (the spirit bar animates)
   gap: [1400, 1600], // a random pause between clicks, in this range
+  // how long a click is given to show its effect before it is tried again,
+  // and an unrecognised screen to clear: 10x the click delay when one is set
+  retry: 15000,
 };
 
 export class Halt extends Error {}
+
+// clicks on a button before giving up on it, while the game stays put
+const CLICK_TRIES = 3;
+
+/**
+ * Whether `b` is still the screen `a` was: the same kind and view, and on
+ * Hero's Legacy the same stock (a stock 10 lower is an attempt spent).
+ */
+function sameScreen(a, b) {
+  if (a.kind !== b.kind || a.view !== b.view) return false;
+  return a.kind !== 'legacy' || a.stock == null || b.stock == null || a.stock === b.stock;
+}
 
 const MOVE = { glory: 'Glory', despair: 'Despair', train: 'Training' };
 const pct = (tier) => `${TIER_PERCENT[tier]}%`;
@@ -32,15 +48,18 @@ export { sleep, TIMING };
 export class Runner {
   /**
    * tab: GameTab; solver: RelicSolver;
-   * settings: { level, objective, attempts, clickMethod, clickDelay };
-   *   clickDelay, in seconds, spaces clicks a random +/- 0.1 s around it
+   * settings: { level, objective, clickDelay, attempts };
+   *   clickDelay, in seconds, spaces clicks a random +/- 0.1 s around it;
+   *   attempts, a limit on them (none if left out: it runs until stopped)
    * ui: { log(text, level), show(frame, info), askTier(candidates) }
    * timing, see (the screen classifier) and read (the rate reader) are for tests.
    */
   constructor({ tab, solver, settings, ui, timing = TIMING, see = classify, read = boardRate }) {
     const delay = settings.clickDelay;
-    if (delay != null) timing = { ...timing, gap: [Math.max(0, delay - 0.1) * 1000, (delay + 0.1) * 1000] };
+    timing = { retry: TIMING.retry, ...timing };
+    if (delay != null) timing = { ...timing, gap: [Math.max(0, delay - 0.1) * 1000, (delay + 0.1) * 1000], retry: 10 * delay * 1000 };
     Object.assign(this, { tab, solver, settings, ui, timing, see, read });
+    this.attempts = settings.attempts ?? Infinity;
     this.board = null; // the inheritor level's board, once known
     if (settings.level != null) this.useLevel(settings.level, settings.objective);
     this.running = false;
@@ -51,6 +70,7 @@ export class Runner {
     this.anywhere = false; // the Compare popup with no screen before it (a run's first look)
     this.tier = null; // the ladder position, while it is known
     this.settled = false; // said this attempt's target is settled
+    this.aimMark = null; // what a mark's play aims at, once the mark is out of reach
     this.current = null; // the applied memory, from Hero's Legacy
     this.result = null; // the attempt just completed
     this.finished = 0;
@@ -62,30 +82,61 @@ export class Runner {
     this.running = false;
   }
 
+  /** The next attempt's number, as the log gives it: "3", or "3 of 10" under a limit. */
+  ordinal() {
+    return `${this.finished + 1}${Number.isFinite(this.attempts) ? ` of ${this.attempts}` : ''}`;
+  }
+
   /** Play attempts on inheritor `level`'s board, for `objective`. */
   useLevel(level, objective) {
     this.board = this.solver.board(level);
-    this.solver.configure(level, objective);
     this.objective = objective;
+    this.aim();
     this.settled = false;
+    this.aimMark = null;
   }
 
   /**
-   * Once an all-or-nothing target is certain or out of reach, every move
-   * scores the same for it, and the solver's tie-breaks play the rest of the
-   * attempt: out of reach of a glory/despair target, for the nearest result
-   * still possible (7/2 when 7/1 is gone), then for amplification.  Say so,
-   * once an attempt.
+   * Solve for the objective from the memory in place: a target or mark is
+   * played to close the gap from it.  A no-op while neither has changed.
+   */
+  aim() {
+    if (this.board && this.objective) this.solver.configure(this.board.level, this.objective, this.current ?? null);
+  }
+
+  /**
+   * Once the target is out of reach this attempt (or nothing more toward the
+   * limit can be gained), every move scores the same for it, and the solver plays
+   * the rest of the attempt for what comes after it.  Say so, once an
+   * attempt.
    */
   settleTarget(st, tier) {
-    if (this.settled || !['target', 'reach'].includes(this.objective?.kind)) return;
-    const odds = this.solver.expected(st, tier);
-    if (odds > 1e-9 && odds < 1 - 1e-9) return;
+    const kind = this.objective?.kind;
+    if (this.settled || (kind !== 'target' && kind !== 'close')) return;
+    if (this.solver.expected(st, tier) > 1e-9) return;
     this.settled = true;
-    const rest = odds < 0.5 && this.objective.kind === 'target'
-      ? 'for the result nearest to it still possible, then the most amplification'
-      : 'for the most amplification';
-    this.ui.log(`The target is ${odds < 0.5 ? 'out of reach' : 'certain'} for this attempt - playing the rest of it ${rest}.`);
+    const o = this.objective;
+    this.ui.log(kind === 'target'
+      ? `The target (${strategySettings(o)}) is out of reach this attempt - playing the rest of it ${o.then ? `until a limit (${strategySettings({ kind: 'close', ...o.then })})` : 'for more glory, less despair'}.`
+      : `Nothing more toward the limit (${strategySettings(o)}) can be gained this attempt - playing the rest of it for more glory, less despair.`);
+  }
+
+  /**
+   * Maximize amplification above a target: once the Minimum Useful Amplification is
+   * out of reach this attempt, the solver plays for the highest amplification
+   * still reachable (never at or below the memory in place - that would not
+   * be kept).  Say so each time that aim drops.
+   */
+  followMark(st) {
+    const o = this.objective;
+    if (o?.kind !== 'max' || o.mark == null || !this.board) return;
+    const best = amplification({ glory: st.gs + (this.board.slots - st.gf), despair: st.ds });
+    const aim = Math.min(o.mark, best);
+    if (aim === this.aimMark) return;
+    this.aimMark = aim;
+    const least = this.current ? amplification(this.current) + 1 : 0;
+    if (aim >= o.mark || aim < least) return; // still on the mark; or nothing keepable (abandoned)
+    this.ui.log(`The +${o.mark}% Minimum Useful Amplification is out of reach this attempt - aiming for +${aim}% now, the highest still possible.`);
   }
 
   // ------------------------------------------------------------- looking
@@ -152,12 +203,52 @@ export class Runner {
     return st.error ? `a board I could not read (${st.error})` : `a board with ${show(st)}`;
   }
 
+  /**
+   * An unrecognised screen (a stream hiccup, a loading overlay, a popup):
+   * watched, without clicking, until a known screen comes back - and if none
+   * does, stopped on, with the frame saved for a look.
+   */
+  async recover(frame) {
+    this.ui.show(frame, { note: 'unrecognised screen' });
+    this.ui.log(`Not on a screen I recognise - waiting up to ${Math.round(this.timing.retry / 1000)} s for it to clear, without clicking.`, 'warn');
+    const back = await this.waitFor((f) => f.screen.kind !== 'unknown', this.timing.retry);
+    if (back) {
+      this.ui.log(`It cleared (${this.describe(back)}) - carrying on.`);
+      this.tier = null; // a move may have landed unseen: read the rate afresh
+      return back;
+    }
+    const last = this.lastSeen ?? frame;
+    this.ui.show(last, { note: 'unrecognised screen' });
+    const saved = await this.ui.saveFrame?.(last);
+    throw new Halt(`Not on a screen I recognise - stopped without clicking.${saved ? ` What I saw is saved as ${saved}.` : ''}`);
+  }
+
   lost(what) {
     if (this.lastSeen) this.ui.show(this.lastSeen, { note: 'last frame seen' });
     throw new Halt(`Waited for ${what} but it never came; the last thing I saw was ${this.describe()}. Stopped.`);
   }
 
   // ------------------------------------------------------------ clicking
+
+  /**
+   * Click a button and wait for what it leads to (`test`), for the retry
+   * interval (10x the click delay).  A click the game did not take - the
+   * screen it was made on still showing, settled and unchanged - is tried
+   * again, up to CLICK_TRIES clicks in all; anything else is lost(`waiting`).
+   * `pick(screen)` finds the button on each frame.
+   */
+  async clickFor(frame, pick, what, test, waiting, opts) {
+    for (let n = 1; ; n++) {
+      await this.click(pick(frame.screen), frame, what, opts);
+      const next = await this.waitFor(test, this.timing.retry);
+      if (next) return next;
+      if (n >= CLICK_TRIES) return this.lost(`${waiting} (${what} clicked ${n} times)`);
+      const same = await this.waitFor((f) => sameScreen(frame.screen, f.screen) && pick(f.screen), 3000);
+      if (!same) return this.lost(waiting);
+      this.ui.log(`${what} did not respond in ${Math.round(this.timing.retry / 1000)} s - clicking it again (${n + 1} of ${CLICK_TRIES}).`, 'warn');
+      frame = same;
+    }
+  }
 
   /** Click; anywhere near Abandon Inheritance only when `abandon` says so. */
   async click(point, frame, what, { abandon = false } = {}) {
@@ -169,7 +260,7 @@ export class Runner {
     const wait = this.lastClick + gap - Date.now();
     if (wait > 0) await sleep(wait);
     if (!this.running) throw new Halt('Stopped.');
-    await this.tab.click(x / frame.ratio, y / frame.ratio, this.settings.clickMethod);
+    await this.tab.click(x / frame.ratio, y / frame.ratio);
     this.lastClick = Date.now();
   }
 
@@ -177,8 +268,8 @@ export class Runner {
 
   async run() {
     this.running = true;
-    this.ui.log(this.board ? `Started: level ${this.board.level} (${this.board.slots} slots), up to ${this.settings.attempts} attempt(s).`
-      : `Started the advisor, up to ${this.settings.attempts} attempt(s).`);
+    const limit = Number.isFinite(this.attempts) ? `, up to ${this.attempts} attempt(s)` : '';
+    this.ui.log(this.board ? `Started: level ${this.board.level} (${this.board.slots} slots)${limit}.` : `Started the advisor${limit}.`);
     try {
       this.anywhere = true;
       let frame = await this.waitFor(() => true, 5000);
@@ -191,9 +282,7 @@ export class Runner {
           case 'compare': frame = await this.onCompare(frame); break;
           case 'legacy': frame = await this.onLegacy(frame); break;
           case 'main': frame = await this.onMain(frame); break;
-          default:
-            this.ui.show(frame, { note: 'unrecognised screen' });
-            throw new Halt('Not on a screen I recognise - stopped without clicking.');
+          default: frame = await this.recover(frame); break;
         }
       }
     } catch (err) {
@@ -261,9 +350,11 @@ export class Runner {
     this.checkOpening(st);
     const tier = await this.resolveTier(screen, st);
 
+    this.aim();
     const useless = this.hopeless(st);
     if (useless) return this.abandonAttempt(frame, st, useless);
     this.settleTarget(st, tier);
+    this.followMark(st);
     const action = this.solver.best(st, tier);
     const info = {
       state: st, tier, action,
@@ -286,9 +377,9 @@ export class Runner {
       return !now.error && moved(st, now);
     };
     await this.click(screen.buttons[action], frame, action);
-    let next = await this.waitFor(changed, 9000);
+    let next = await this.waitFor(changed, this.timing.retry);
     if (!next) {
-      // no response in 9 s: if the board is exactly as it was, the click
+      // no response in the retry interval: if the board is exactly as it was, the click
       // missed - try once more (a late response on top would show as two
       // fills and stop the run)
       const again = (await this.waitFor(() => true, 3000)) ?? this.lost('the board');
@@ -300,7 +391,7 @@ export class Runner {
         this.ui.log(`The ${MOVE[action]} click did not register - trying once more.`, 'warn');
         if (!again.screen.present[action]) throw new Halt(`The ${MOVE[action]} Attempt button is not showing - stopped.`);
         await this.click(again.screen.buttons[action], again, action);
-        next = (await this.waitFor(changed, 9000)) ?? this.lost('a response to the click');
+        next = (await this.waitFor(changed, this.timing.retry)) ?? this.lost('a response to the click');
       }
     }
 
@@ -350,6 +441,7 @@ export class Runner {
 
   async onComplete(frame) {
     this.settled = false;
+    this.aimMark = null;
     const { glory, despair } = frame.screen.memory;
     if (glory.slots !== this.board.slots || despair.slots !== this.board.slots
       || glory.filled !== glory.slots || despair.filled !== despair.slots) {
@@ -358,10 +450,9 @@ export class Runner {
     this.result = { glory: glory.success, despair: despair.success };
     this.ui.show(frame, { note: `attempt finished: ${fmtMemory(this.result)}` });
     this.ui.log(`Attempt finished: ${fmtMemory(this.result)}. Clicking Complete Inheritance.`, 'good');
-    await this.click(frame.screen.button, frame, 'Complete Inheritance');
     this.expect = 'compare';
-    const next = (await this.waitFor((f) => f.screen.kind === 'compare' || f.screen.kind === 'legacy', 10000))
-      ?? this.lost('the results screen');
+    const next = await this.clickFor(frame, (s) => s.button, 'Complete Inheritance',
+      (f) => f.screen.kind === 'compare' || f.screen.kind === 'legacy', 'the results screen');
     if (next.screen.kind === 'legacy') {
       // no memory to compare with: the result was applied as it is
       this.expect = null;
@@ -388,8 +479,8 @@ export class Runner {
     const choice = this.choose(current, fresh);
     this.ui.show(frame, { note: `${choice}: new ${fmtMemory(fresh)} vs current ${fmtMemory(current)}` });
     this.ui.log(`Results: new ${fmtMemory(fresh)} vs current ${fmtMemory(current)} - ${choice === 'keep' ? 'Keep Current Effect' : 'Replace with New Effect'}.`);
-    await this.click(frame.screen.buttons[choice], frame, choice);
-    const next = (await this.waitFor((f) => f.screen.kind === 'legacy', 10000)) ?? this.lost('Hero\'s Legacy');
+    const next = await this.clickFor(frame, (s) => s.buttons?.[choice], choice === 'keep' ? 'Keep' : 'Replace',
+      (f) => f.screen.kind === 'legacy', "Hero's Legacy");
     this.expect = null;
     const want = choice === 'keep' ? current : fresh;
     const got = { glory: next.screen.memory.glory.success, despair: next.screen.memory.despair.success };
@@ -442,6 +533,7 @@ export class Runner {
    */
   async abandonAttempt(frame, st, useless = null) {
     this.settled = false;
+    this.aimMark = null;
     const { screen } = frame;
     if (!useless && Object.values(screen.present).some(Boolean)) {
       throw new Halt(`The board reads as wiped (${show(st)}) but an Attempt button is showing - stopped.`);
@@ -449,11 +541,11 @@ export class Runner {
     if (!screen.abandon) throw new Halt(`Abandoning this attempt (${show(st)}) but I cannot find Abandon Inheritance - stopped.`);
     this.ui.log(useless ? `Nothing useful left in this attempt: ${useless} - abandoning it.`
       : `Out of spirit power and mental strength with the bars unfinished (${show(st)}) - abandoning the attempt.`, 'warn');
-    await this.click(screen.abandon, frame, 'Abandon Inheritance', { abandon: true });
     this.expect = 'abandon';
-    const popup = (await this.waitFor((f) => f.screen.kind === 'abandon', 6000)) ?? this.lost('the abandon confirmation');
-    await this.click(popup.screen.buttons.confirm, popup, 'Confirm');
-    const next = (await this.waitFor((f) => f.screen.kind === 'legacy', 10000)) ?? this.lost('Hero\'s Legacy');
+    const popup = await this.clickFor(frame, (s) => s.abandon, 'Abandon Inheritance',
+      (f) => f.screen.kind === 'abandon', 'the abandon confirmation', { abandon: true });
+    const next = await this.clickFor(popup, (s) => s.buttons?.confirm, 'Confirm',
+      (f) => f.screen.kind === 'legacy', "Hero's Legacy");
     this.expect = null;
     const got = { glory: next.screen.memory.glory.success, despair: next.screen.memory.despair.success };
     if (this.current && (got.glory !== this.current.glory || got.despair !== this.current.despair)) {
@@ -472,16 +564,16 @@ export class Runner {
     const m = frame.screen.memory;
     this.current = { glory: m.glory.success, despair: m.despair.success };
     this.ui.show(frame, { note: `current memory: ${fmtMemory(this.current)}` });
-    if (this.finished >= this.settings.attempts) {
+    if (this.finished >= this.attempts) {
       throw new Halt(`Done: ${this.finished} attempt(s), current memory ${fmtMemory(this.current)}.`);
     }
     if (hitsObjective(this.objective, this.current)) {
       throw new Halt(`The current memory (${fmtMemory(this.current)}) already meets the objective.`);
     }
-    this.ui.log(`Current memory: ${fmtMemory(this.current)}. Clicking Inheritance (attempt ${this.finished + 1} of ${this.settings.attempts}).`);
-    await this.click(frame.screen.button, frame, 'Inheritance');
+    this.ui.log(`Current memory: ${fmtMemory(this.current)}. Clicking Inheritance (attempt ${this.ordinal()}).`);
     // any board: onBoard checks it opens the way this level should
-    const next = (await this.waitFor((f) => f.screen.kind === 'board', 10000)) ?? this.lost('the attempt to start (out of relics?)');
+    const next = await this.clickFor(frame, (s) => s.button, 'Inheritance',
+      (f) => f.screen.kind === 'board', 'the attempt to start (out of relics?)');
     this.tier = null;
     return next;
   }
@@ -516,6 +608,7 @@ export class Runner {
         this.ui.show(frame, { state: st, note: 'could not read the rate on the buttons' });
         return { note: 'rate unreadable' };
       }
+      this.aim();
       const info = {
         state: st, tier, action: this.solver.best(st, tier),
         expected: this.solver.expected(st, tier), finish: this.solver.finishChance(st, tier),

@@ -2,7 +2,12 @@
 
 Plays relic inheritance attempts in the cloud-phone tab with the exact
 solver from this repo, compiled to WebAssembly. It reads the game from tab
-screenshots and clicks through the Chrome DevTools Protocol.
+screenshots (Chrome's tab capture: up to 2 a second, and no redraw, so the
+phone's video does not flicker) and clicks through the Chrome DevTools
+Protocol. Tab capture needs the extension's access to the site, which Chrome
+asks for when the extension is loaded. Keep the game tab the one showing in
+its window: otherwise it falls back to the debugger's screenshots (and says
+so), which work on a hidden tab but make the page flicker.
 
 ## Setup
 
@@ -39,9 +44,18 @@ on the main page or a relic's Hero's Legacy.
      (nothing it needs is affordable), **convert** (at 20, short of the
      tier) or **done**: it stops and says so.
    - **roll a relic**: it opens that relic and plays its attempts the way
-     the plan says (all-or-nothing for a bar, a weighted score, or a mark).
-     Keep or Replace follows the plan's own keep rule, for example keeping
-     any roll that closes the gap to a level's totals.
+     the plan says. A relic the level names a bar for: the best chance of
+     the bar, then the goal's totals. On a totals level: closing the gap to
+     the level's totals, or, where the plan says so, to the totals ahead
+     (the most glory and the least despair any level up to the goal asks),
+     then more glory and less despair weighed as those totals still need
+     them, so 9/0 beats a 9/1 that clears it. Keep or Replace ranks the
+     result the same way: its bar met, then the board nearer those totals,
+     then more glory less despair. When every relic meets its bar but the
+     requirement is still short, the plan pushes the bars further (where the
+     plan says so, a relic traded off its bar for a result the keep rule
+     ranks as high counts as meeting it) - worked out from the board each
+     time, like everything else it decides.
 5. While the plan, re-run on the updated board, keeps picking the same
    relic, it keeps rolling it. Otherwise it goes back (the red return
    button) and starts over from step 1. Each attempt adds pity, and once
@@ -50,11 +64,11 @@ on the main page or a relic's Hero's Legacy.
 Started part-way through an attempt, it finishes that attempt first. If the
 advisor started it (and the run was stopped), it uses the same targeting and
 keep rule, saved when it clicked Inheritance. Otherwise it uses the
-**Inheritor level** and **Play for** settings. Then it goes on from the main
+**Inheritor level** and **Strategy** settings. Then it goes on from the main
 page.
 
 **One relic** plays only the relic whose Hero's Legacy is showing, at the
-level and with the "Play for" objective set in the panel. It stops when a
+level and with the **Strategy** set in the panel. It stops when a
 result beats the current memory.
 
 ## Use
@@ -65,10 +79,32 @@ result beats the current memory.
    doesn't open the way that level should (free glory and despair slots),
    the run stops and names the levels that fit. The advisor reads the level
    itself.
-3. Pick what to play for. **Most amplification** gives +5% per glory success
-   and -2% per despair success. A **target** (>= G glory, <= D despair) or a
-   **mark** is all or nothing. Wipe penalty trades amplification for fewer
-   wipes (see STRATEGY.md).
+3. Pick the **Strategy**:
+   - **Maximize amplification above a target** (+5% per glory success, -2%
+     per despair success), with a **Minimum Useful Amplification**: a result is
+     worth nothing below the goal, something at it and more above it, so it
+     plays first for the best chance of the goal or more, then for the most
+     amplification. If the goal slips out of reach part-way, it plays for
+     the highest amplification still possible (and says so in the log),
+     never for less than beats the current memory. Leave the goal blank to
+     just beat the current memory. The advisor farms Demon Eye this way,
+     with the goal's tier as the Minimum Useful Amplification.
+   - **Maximize glory, minimize despair above a target**, with a **Glory
+     Target** and a **Despair Target**: plays for the best chance of both at
+     once (that much glory or more, that much despair or less), then for
+     more glory and less despair; a result is kept if it hits the target
+     where the memory did not, or as much and with more glory less despair.
+   - **Maximize glory, minimize despair until a limit**, with a **Max
+     useful Glory** and a **Min useful Despair**: every glory gained up to
+     the max and every despair shed down to the min counts, and it plays for
+     the most of those steps, then for more glory, less despair. The advisor
+     plays a totals level this way, the limit being what closes the totals
+     gap for that relic.
+
+   In Advisor mode these show how an attempt in progress is finished when
+   the advisor has no record of it, and the advisor sets them to whatever
+   it last played, so a run stopped and started again picks up the same
+   way.
 4. Press **Read screen** first. The view marks every slot it read and the
    button it would press, without clicking anything.
 5. Press **Start**. Chrome shows a "started debugging this browser" bar while
@@ -79,25 +115,30 @@ bars are full, then **Complete Inheritance**, then **Keep** or **Replace**,
 then back to Hero's Legacy. Clicks are spaced by the **Click delay**
 setting, give or take a random 0.1 s (1.5 s gives 1.4-1.6 s).
 
+Each click is given 10x the click delay (15 s at 1.5 s) to show its effect.
+If the game is still on the screen it clicked, settled and unchanged, the
+click did not land and is made again, up to 3 times in all. A screen it does
+not recognise (a stream hiccup, a loading overlay) is watched for as long,
+without clicking, and the run carries on if a known screen comes back.
+
 It stops when:
 
-- the screen is not one of those it knows, settled or after a click
-  (popups, the abandon confirmation, loading, anything else)
+- the screen is not one of those it knows and does not clear (popups, the
+  abandon confirmation, anything else). The frame is saved to Downloads.
+- a click leads somewhere other than where that button goes, or 3 clicks
+  on it in a row do nothing
 - a click does something other than what that button does
 - a result beats the current memory: it presses Replace, checks Hero's
   Legacy shows the new memory, then stops
-- **Max attempts** attempts have finished, each one kept with Keep
 - the current memory already meets a target or mark
 - the attempt wipes, or you press Stop
 
 An attempt nothing useful can come of is abandoned at once. Every count of
 successes in the slots left is still possible, so if none of those results
-would be kept (the plan's keep rule, or in One relic mode a target hit or
-more amplification than the current memory), it clicks Abandon Inheritance
-and Confirm instead of playing on. Once a target is out of reach, the solver
-plays the rest of the attempt for the result nearest to it still possible
-(7/1 gone with 2 despair successes: 7/2, which the keep rule then keeps over
-a 7/3), then for amplification; once it is certain, for amplification.
+would be kept (the plan's keep rule, or in One relic mode a narrower gap to
+the target or more amplification than the current memory), it clicks Abandon
+Inheritance and Confirm instead of playing on. Once nothing more of the gap
+can be closed, the solver plays the rest of the attempt for amplification.
 
 A wiped attempt (no spirit power or mental strength left, the bars
 unfinished, no Attempt buttons) is abandoned: it clicks **Abandon

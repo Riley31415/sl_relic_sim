@@ -1,7 +1,7 @@
 import assert from 'assert';
 
 import { test } from './harness.mjs';
-import { amplification, chooseMemory, inferOutcome, nextTier, isStartState } from '../chrome/lib/logic.js';
+import { amplification, chooseMemory, hitsObjective, inferOutcome, nextTier, isStartState } from '../chrome/lib/logic.js';
 
 const S = (gf, gs, df, ds, ms, sp) => ({ gf, gs, df, ds, ms, sp });
 
@@ -52,4 +52,21 @@ test('the opening state', () => {
   const board = { slots: 9, maxSpirit: 10, startGlory: 1, startDespairFail: 1 };
   assert.ok(isStartState(S(1, 1, 1, 0, 9, 10), board));
   assert.ok(!isStartState(S(2, 2, 1, 0, 8, 9), board));
+});
+
+test('a target keeps whatever narrows the gap to it, or is better on both bars', () => {
+  const target = { kind: 'target', glory: 7, despair: 1 };
+  const at = (glory, despair) => ({ glory, despair });
+  assert.strictEqual(chooseMemory(target, at(7, 3), at(7, 2)), 'replace'); // a step nearer
+  assert.strictEqual(chooseMemory(target, at(7, 3), at(6, 1)), 'replace'); // a glory for two despair: nearer
+  assert.strictEqual(chooseMemory(target, at(7, 3), at(6, 2)), 'keep'); // as far off
+  assert.strictEqual(chooseMemory(target, at(8, 1), at(9, 1)), 'replace'); // better on both, past the bar
+  assert.strictEqual(chooseMemory(target, at(7, 3), at(0, 0)), 'keep'); // a wipe
+  assert.strictEqual(chooseMemory({ kind: 'target', glory: 8, despair: null }, at(7, 5), at(8, 9)), 'replace'); // any despair
+});
+
+test('above a mark: a memory at the mark already meets it; a plain max never does', () => {
+  assert.strictEqual(hitsObjective({ kind: 'max', mark: 46 }, { glory: 10, despair: 2 }), true); // 46%
+  assert.strictEqual(hitsObjective({ kind: 'max', mark: 46 }, { glory: 9, despair: 0 }), false); // 45%
+  assert.strictEqual(hitsObjective({ kind: 'max' }, { glory: 10, despair: 0 }), false);
 });

@@ -50,6 +50,8 @@ const SOURCES = [
   ['legacy-mermaid', [535, 0, 465, 847], 0.917, 'stock', '180'],
   ['legacy-sky', [535, 0, 465, 847], 0.917, 'stock', '4'],
   ['legacy-giant-167', [535, 0, 465, 847], 0.917, 'stock', '167'],
+  ['legacy-seal-116', [488, 0, 465, 847], 0.917, 'stock', '116'], // the 6 run into the slash
+  ['legacy-seal-86-sd', [488, 0, 465, 847], 0.917, 'stock', '86'], // the stream in SD: blurrier
   // every relic's Hero's Legacy (hero-NN-*.png, NN the relic's place on the main page)
   ...['207', '115', '135', '92', '109', '28', '156', '105', '36', '180', '4', '27'].map((stock, i) =>
     [`hero-${String(i).padStart(2, '0')}-${HERO[i]}`, [535, 0, 465, 847], 0.917, 'stock', stock]),

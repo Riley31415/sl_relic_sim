@@ -2,7 +2,7 @@
 //! the expectations the solve reports.
 
 use relic::rng::Rng;
-use relic::solver::{Action, BEST_TIER, Choice, Config, Solver, State, Strategy, TIERS, WORST_TIER};
+use relic::solver::{Action, BEST_TIER, Choice, Config, Objective, Solver, State, Strategy, TIERS, WORST_TIER};
 
 fn level(n: i64) -> Config {
     Config::for_level(n, Strategy::default()).unwrap()
@@ -408,22 +408,6 @@ fn recording_a_wipe_as_zero_zero_leaves_the_policy_alone() {
 }
 
 #[test]
-fn the_score_objective_is_unfloored_and_never_negative() {
-    let solver = Solver::new(Config::for_level(1, Strategy::score(1.0, 3.0)).unwrap()); // 5 slots
-    // a 5/2 and a 1/5 both floor to 0 as amplification; score keeps them apart
-    assert_eq!(solver.objective(5, 2), 5.0 + 3.0 * 3.0);
-    assert_eq!(solver.objective(1, 5), 1.0);
-    for g in 0..=5 {
-        for d in 0..=5 {
-            assert!(solver.objective(g, d) >= 0.0);
-        }
-    }
-    assert_eq!(solver.cfg.strategy.name(), "score (1 glory : 3 despair)");
-}
-
-// ------------------------------------------------------------------ edge cases
-
-#[test]
 fn training_is_a_tier_lever_not_just_a_spirit_power_refill() {
     // spirit power alone covers both bars, so training is never needed for
     // fuel - and it still gets used: a failed training costs no slot and
@@ -445,7 +429,7 @@ fn the_wipe_chance_is_never_zero_when_training_is_required() {
 }
 
 #[test]
-fn reaching_a_mark_is_all_or_nothing_on_amplification() {
+fn above_a_mark_first_maximises_the_chance_of_the_mark() {
     // P(amplification >= mark) from an attempt's outcome distribution
     let p_reach = |strategy: Strategy, mark: f64| {
         let mut solver = Solver::new(Config::for_level(20, strategy).unwrap());
@@ -453,12 +437,12 @@ fn reaching_a_mark_is_all_or_nothing_on_amplification() {
         a.dist.iter().filter(|&((g, d), _)| solver.amplification(g, d) >= mark).map(|(_, p)| p).sum::<f64>()
     };
     // 50% is a full glory bar with no despair: the same box as target (10, 0)
-    assert!(close(p_reach(Strategy::reach(50), 50.0), p_reach(Strategy::target(10, 0), 50.0), 1e-12));
-    // playing for a mark beats playing for amplification at that mark
+    assert!(close(p_reach(Strategy::above(50, None), 50.0), p_reach(Strategy::target(10, 0), 50.0), 1e-12));
+    // playing above a mark beats playing for amplification at that mark
     for mark in [42, 45, 48] {
-        let (reach, weighted) =
-            (p_reach(Strategy::reach(mark), f64::from(mark)), p_reach(Strategy::default(), f64::from(mark)));
-        assert!(reach >= weighted - 1e-12, "{mark}%: {reach} vs {weighted}");
+        let (above, weighted) =
+            (p_reach(Strategy::above(mark, None), f64::from(mark)), p_reach(Strategy::default(), f64::from(mark)));
+        assert!(above >= weighted - 1e-12, "{mark}%: {above} vs {weighted}");
     }
 }
 
@@ -525,4 +509,57 @@ fn settled_ties_change_nothing_but_what_follows_the_target() {
     let a = solver.analyse(None);
     assert!(close(a.p_target, 0.114972, 1e-6), "{}", a.p_target);
     assert!(close(a.e_amplification, 16.377, 1e-3), "{}", a.e_amplification);
+}
+
+#[test]
+fn close_scores_the_steps_a_result_closes_and_nothing_for_none() {
+    // toward 9 glory / 0 despair from 8/2: 9/1 closes two, 8/1 or 9/2 one
+    let s = Solver::new(Config::for_level(19, Strategy::close(9, 0, (8, 2))).unwrap());
+    assert_eq!(s.objective(9, 1), 2.0);
+    assert_eq!(s.objective(8, 1), 1.0);
+    assert_eq!(s.objective(9, 2), 1.0);
+    assert_eq!(s.objective(8, 2), 0.0);
+    assert_eq!(s.objective(7, 1), 0.0); // a glory lost for a despair shed: no nearer
+    assert_eq!(s.objective(9, 4), 0.0); // further away: not kept, worth nothing
+}
+
+#[test]
+fn above_a_mark_is_nothing_below_it_and_everything_at_it() {
+    // 46% over a memory of 8/2 (+36%)
+    let s = Solver::new(Config::for_level(20, Strategy::above(46, Some((8, 2)))).unwrap());
+    assert_eq!(s.cfg.strategy.objective, Objective::Above { mark: 46, least: 37 });
+    assert_eq!(s.objective(9, 1), 0.0); // +43%: below the mark
+    assert_eq!(s.objective(10, 2), 1.0); // +46%: at it
+    assert_eq!(s.objective(10, 0), 1.0); // +50%: above it (more amplification breaks ties)
+    // a mark under the memory is raised to beat it: "go higher"
+    assert_eq!(Strategy::above(0, Some((8, 2))).objective, Objective::Above { mark: 37, least: 37 });
+    // no memory: any finished result counts
+    assert_eq!(Strategy::above(0, None).objective, Objective::Above { mark: 0, least: 0 });
+}
+
+#[test]
+fn a_mark_out_of_reach_falls_to_the_highest_amplification_left() {
+    // 46% over 7/1 (+33%) at level 20 (10 slots): one glory slot left, 7
+    // glory and 2 despair so far - at best 8/2, +36%, so 46% is gone; the
+    // play goes on for 36% exactly as if 36% were the mark
+    let mut for_46 = Solver::new(Config::for_level(20, Strategy::above(46, Some((7, 1)))).unwrap());
+    let mut for_36 = Solver::new(Config::for_level(20, Strategy::above(36, Some((7, 1)))).unwrap());
+    let s = st(9, 7, 10, 2, 2, 1, 1);
+    assert_eq!(for_46.value(s).score, 0.0);
+    assert!(close(for_46.value(s).near, for_36.value(s).score, 1e-12));
+    assert_eq!(for_46.best_action(s), for_36.best_action(s));
+}
+
+#[test]
+fn gap_play_counts_every_result_that_closes_the_gap() {
+    // level 19, 8/2 relic, the board 4 glory short and 3 despair over: one
+    // slot left on each bar at 50%.  All or nothing for 8/1 rolls glory
+    // first (8/1: 67.9%); closing the gap trains first - 9/1, 8/1 and 9/2
+    // all count - for 1.34 steps expected against 1.28
+    let mut s = Solver::new(Config::for_level(19, Strategy::close(9, 0, (8, 2))).unwrap());
+    let st = State { gf: 8, gs: 8, df: 8, ds: 1, ms: 3, sp: 3, tier: 2 };
+    assert_eq!(s.best_action(st), Choice::Act(Action::Train));
+    assert!(close(s.value(st).score, 1.3369, 1e-4), "{}", s.value(st).score);
+    let mut target = Solver::new(Config::for_level(19, Strategy::target(8, 1)).unwrap());
+    assert_eq!(target.best_action(st), Choice::Act(Action::Glory));
 }

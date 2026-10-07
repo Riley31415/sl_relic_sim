@@ -25,10 +25,13 @@ fn the_screenshot_says_to_repair_the_crown() {
         "{out}"
     );
     assert!(
-        out.contains("all-or-nothing for 8+ glory / 2- despair   [autoplayer: Target, G 8, D 2]"),
+        // played to close the gap to the totals ahead, level 20's (4 glory short, 6 despair over), from 8/3
+        out.contains("until a limit - max useful glory 9, min useful despair 0: what closes the totals gap for this relic, 4 useful steps off now"),
         "{out}"
     );
-    assert!(out.contains("0 despair and 6+ glory"), "{out}");
+    // ties weighed 2 : 3 (4 glory short, 6 despair over): 5/0 is as near those
+    // totals as 8/3, and sheds the despair they are further off on
+    assert!(out.contains("0 despair and 5+ glory") && out.contains("weighed 2 : 3"), "{out}");
 }
 
 #[test]
@@ -72,5 +75,6 @@ fn at_the_top_it_converts_then_farms() {
     let (ok, out) = advisor(&args);
     assert!(ok, "{out}");
     assert!(out.contains(">> ATTEMPT  Demon Eye of Weakness"), "{out}");
-    assert!(out.contains("[autoplayer: Amplification >= 46%]"), "{out}");
+    assert!(out.contains("the best chance of 43% or more, then the most amplification"), "{out}");
+    assert!(out.contains("[autoplayer: Maximize amplification above a target - Minimum Useful Amplification 43%]"), "{out}");
 }

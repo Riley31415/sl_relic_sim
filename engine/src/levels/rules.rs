@@ -88,18 +88,23 @@ pub struct LevelRules {
     pub base: Bar,
     /// plan a total level as single-step repairs instead of `base`
     pub surgical: bool,
-    /// on a total level, also keep rolls that close the board's gap
-    pub closer: bool,
-    /// play attempts for this (glory, clean despair) score, not all-or-nothing
-    pub score: Option<(f64, f64)>,
-    /// spare relics are attempted for the pity, kept if they move toward this
-    pub filler: Option<Bar>,
+    /// when nothing the quest needs is affordable, attempt a spare relic for
+    /// the pity rather than summon - played and kept as a quest roll would be
+    pub filler: bool,
+    /// ...but only when the spare relics on hand can fill the pity bar in at
+    /// most this many attempts (None: whenever nothing the quest needs is
+    /// affordable)
+    pub filler_within: Option<u32>,
     /// banked relics: out of total work and filler
     pub locked: RelicSet,
-    /// relics a total's work goes to only when nothing else it needs is
-    /// affordable: those a later quest names, and the crit relic on the way
-    /// to the top (its stock is the tier farm's)
-    pub spare: RelicSet,
+    /// every attempt closes the gap to the totals ahead (the most glory and
+    /// the least despair any totals level up to the target asks) rather than
+    /// this level's own (`Game::horizon_for`)
+    pub ahead: bool,
+    /// a relic short of its bar that the keep rule ranks at least as high as
+    /// the bar (a trade it took) counts as having met it: once every relic
+    /// has, the bars go further
+    pub trades: bool,
     /// relics the quest work goes to first, and whether the others must wait
     pub prefer: Option<(RelicSet, bool)>,
 }

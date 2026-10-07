@@ -3,6 +3,38 @@
 
 /** The shared success-chance ladder, easiest first (solver.rs TIERS). */
 export const TIER_PERCENT = [80, 65, 50, 35, 20];
+
+/** Each strategy's name, as the panel shows it. */
+export const STRATEGY = {
+  max: 'Maximize amplification above a target',
+  target: 'Maximize glory, minimize despair above a target',
+  close: 'Maximize glory, minimize despair until a limit',
+};
+
+/** A strategy's settings, as the panel labels them. */
+export function strategySettings(o) {
+  switch (o.kind) {
+    case 'target':
+      return `Glory Target ${o.glory}, Despair Target ${o.despair ?? 'any'}`;
+    case 'close':
+      return `Max useful Glory ${o.glory}, Min useful Despair ${o.despair}`;
+    default:
+      return o.mark != null ? `Minimum Useful Amplification +${o.mark}%` : 'no Minimum Useful Amplification: beat the memory';
+  }
+}
+
+/** How an attempt is played, in the panel's words. */
+export function describeObjective(o) {
+  let text = `${STRATEGY[o.kind] ?? STRATEGY.max} (${strategySettings(o)})`;
+  if (o.kind === 'target' && o.then) {
+    // the advisor's: once the target is settled, on toward the totals
+    text += `, then until a limit (${strategySettings({ kind: 'close', ...o.then })})`;
+  }
+  if (o.kind === 'close' && o.tie && (o.tie.glory !== o.tie.despair)) {
+    text += `, ties weighed ${o.tie.glory} : ${o.tie.despair}`;
+  }
+  return text;
+}
 const WORST_TIER = TIER_PERCENT.length - 1;
 
 /** A success makes the next roll one tier harder, a failure one easier. */
@@ -15,26 +47,45 @@ export function amplification({ glory, despair }) {
   return Math.max(0, 5 * glory - 2 * despair);
 }
 
-/** Whether a memory hits an all-or-nothing objective (never, for 'max'). */
+/** Whether a memory already meets the objective: a target, or a mark (never, for a plain max). */
 export function hitsObjective(objective, memory) {
   switch (objective.kind) {
     case 'target':
-      return memory.glory >= objective.glory && memory.despair <= objective.despair;
-    case 'reach':
-      return amplification(memory) >= objective.mark;
+      return memory.glory >= objective.glory && (objective.despair == null || memory.despair <= objective.despair);
+    case 'close':
+      return gapTo(objective, memory) === 0;
+    case 'max':
+      return objective.mark != null && amplification(memory) >= objective.mark;
     default:
       return false;
   }
 }
 
+/** The steps a memory is off a target: a glory short or a despair over, one each. */
+export function gapTo(objective, { glory, despair }) {
+  return Math.max(0, objective.glory - glory) + (objective.despair == null ? 0 : Math.max(0, despair - objective.despair));
+}
+
 /**
- * Keep the current memory or replace it with the fresh one: a hit on the
- * objective beats a miss, then more amplification wins; a tie keeps.
+ * Keep the current memory or replace it with the fresh one: replace if the
+ * fresh one ranks higher, as the attempt was played.  A target: its bar met,
+ * then more glory less despair.  Closing a gap: nearer it (each glory short
+ * or despair over a step), then more glory less despair.  Max amplification:
+ * more amplification.  A tie keeps.
  */
 export function chooseMemory(objective, current, fresh) {
-  const hc = hitsObjective(objective, current), hf = hitsObjective(objective, fresh);
-  if (hc !== hf) return hf ? 'replace' : 'keep';
-  return amplification(fresh) > amplification(current) ? 'replace' : 'keep';
+  const tie = objective.kind === 'close' && objective.tie ? objective.tie : { glory: 1, despair: 1 };
+  const steps = (m) => tie.glory * m.glory - tie.despair * m.despair;
+  const rank = (m) => {
+    switch (objective.kind) {
+      case 'target': return [hitsObjective(objective, m) ? 1 : 0, steps(m)];
+      case 'close': return [-gapTo(objective, m), steps(m)];
+      default: return [amplification(m)];
+    }
+  };
+  const [f, c] = [rank(fresh), rank(current)];
+  for (let i = 0; i < f.length; i++) if (f[i] !== c[i]) return f[i] > c[i] ? 'replace' : 'keep';
+  return 'keep';
 }
 
 /** Whether a board read differs from `prev` in anything an action changes. */

@@ -64,38 +64,91 @@ pub enum Objective {
     /// all or nothing: maximise P(at least `glory` glory successes and at
     /// most `despair` despair successes)
     Target { glory: u8, despair: u8 },
-    /// an unfloored score: w_glory a glory success plus w_despair a despair
-    /// slot left clean - never negative, so a wipe stays the worst outcome
-    Score,
-    /// all or nothing on amplification: maximise P(amplification >= `mark`%)
-    Reach { mark: u8 },
+    /// close the gap to a bar from a memory `gap` steps off it: a result is
+    /// worth the steps it closes - a glory success short of `glory` gained, a
+    /// despair success over `despair` shed, one each - and nothing if it
+    /// closes none (it would not be kept).  The play the levels engine uses.
+    Close { glory: u8, despair: u8, gap: u8 },
+    /// max amplification above a mark: a result is worth nothing below
+    /// `mark`%, something at it and more above it - the best chance of
+    /// `mark`% or more first, then the most amplification.  When `mark` is
+    /// out of reach part-way, the highest amplification still reachable
+    /// takes its place, down to `least`% (anything less would not be kept:
+    /// the memory's amplification + 1).  The crit relic farm plays it with
+    /// the tier as the mark; a mark just above the memory means "go higher".
+    Above { mark: u8, least: u8 },
 }
 
-/// An objective plus the amplification weights it is reported in.
+/// What settles moves every objective scores alike.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Last {
+    /// more amplification (the crit relic, and the solve reports)
+    Amp,
+    /// `glory` a glory success less `despair` a despair success: every relic
+    /// but the crit relic.  1:1 unless the levels to come need one more than
+    /// the other (on a totals level, weighted by how short of the goal's
+    /// glory the board is against how far over its despair)
+    Steps { glory: u8, despair: u8 },
+}
+
+/// An objective, what breaks its ties, and the amplification weights it is
+/// reported in.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Strategy {
     pub objective: Objective,
     pub w_glory: f64,
     pub w_despair: f64,
+    /// a second objective for moves the first scores alike: closing the gap
+    /// to (glory, despair) from a memory `gap` steps off - the levels
+    /// engine's look-ahead to the goal's totals, after a relic's own bar
+    pub then: Option<(u8, u8, u8)>,
+    pub last: Last,
 }
 
 impl Strategy {
     pub fn weighted(w_glory: f64, w_despair: f64) -> Self {
-        Strategy { objective: Objective::Weighted, w_glory, w_despair }
+        Strategy { objective: Objective::Weighted, w_glory, w_despair, then: None, last: Last::Amp }
     }
 
     /// All or nothing for (glory, despair), reported at +5% / -2%.
     pub fn target(glory: u8, despair: u8) -> Self {
-        Strategy { objective: Objective::Target { glory, despair }, w_glory: 5.0, w_despair: 2.0 }
+        Strategy { objective: Objective::Target { glory, despair }, w_glory: 5.0, w_despair: 2.0, then: None, last: Last::Amp }
     }
 
-    pub fn score(w_glory: f64, w_despair: f64) -> Self {
-        Strategy { objective: Objective::Score, w_glory, w_despair }
+    /// Then, for moves the objective scores alike, close the gap to (glory,
+    /// despair) from a memory `gap` steps off; then more glory, less despair.
+    pub fn then_close(self, glory: u8, despair: u8, gap: u8) -> Self {
+        Strategy { then: Some((glory, despair, gap)), last: Last::Steps { glory: 1, despair: 1 }, ..self }
     }
 
-    /// All or nothing for an amplification of at least `mark`%, at +5% / -2%.
-    pub fn reach(mark: u8) -> Self {
-        Strategy { objective: Objective::Reach { mark }, w_glory: 5.0, w_despair: 2.0 }
+    /// Maximize glory, minimize despair until a limit: every glory gained
+    /// up to `glory` (max useful glory) and every despair shed down to
+    /// `despair` (min useful despair) from the memory `from` counts, reported
+    /// at +5% / -2%.  Only how far off `from` is matters.
+    pub fn close(glory: u8, despair: u8, from: (u8, u8)) -> Self {
+        let gap = glory.saturating_sub(from.0) + from.1.saturating_sub(despair);
+        Strategy {
+            objective: Objective::Close { glory, despair, gap },
+            w_glory: 5.0,
+            w_despair: 2.0,
+            then: None,
+            last: Last::Steps { glory: 1, despair: 1 },
+        }
+    }
+
+    /// What settles the rest: `glory` a glory success less `despair` a
+    /// despair success.
+    pub fn tie(self, glory: u8, despair: u8) -> Self {
+        Strategy { last: Last::Steps { glory, despair }, ..self }
+    }
+
+    /// Maximize amplification above a target: the minimum useful amplification `mark`%,
+    /// at +5% / -2%, over the memory `from`
+    /// if one is in place (a result must beat it to be kept, so the mark is
+    /// at least one above it; None: any finished result counts).
+    pub fn above(mark: u8, from: Option<(u8, u8)>) -> Self {
+        let least = from.map_or(0, |(g, d)| (5 * i32::from(g) - 2 * i32::from(d)).clamp(0, 254) as u8 + 1);
+        Strategy { objective: Objective::Above { mark: mark.max(least), least }, w_glory: 5.0, w_despair: 2.0, then: None, last: Last::Amp }
     }
 
     pub fn with_weights(self, w_glory: f64, w_despair: f64) -> Self {
@@ -110,10 +163,8 @@ impl Strategy {
         use crate::format::general;
         match self.objective {
             Objective::Target { glory, despair } => format!("target ({glory}, {despair})"),
-            Objective::Reach { mark } => format!("reach {mark}%"),
-            Objective::Score => {
-                format!("score ({} glory : {} despair)", general(self.w_glory), general(self.w_despair))
-            }
+            Objective::Close { glory, despair, gap } => format!("close to ({glory}, {despair}) from {gap} off"),
+            Objective::Above { mark, least } => format!("max amplification above {mark}% (kept from {least}%)"),
             Objective::Weighted => {
                 format!("weighted (+{}%/-{}%)", general(self.w_glory), general(self.w_despair))
             }
@@ -274,12 +325,16 @@ pub enum Choice {
 pub struct Value {
     pub p_finish: f64,
     pub score: f64,
-    /// target strategies: the chance of ending in the nearest box still
-    /// reachable from here (the target itself while it can be hit) - what
-    /// breaks a tie in the objective
+    /// the second objective (`Strategy::then`), expected: what breaks a tie
+    /// in the first
+    pub then: f64,
+    /// the chance of ending on the nearest result still reachable from here
+    /// (a target's box, or a mark; the objective itself while it can be
+    /// hit) - what breaks a tie after that
     pub near: f64,
-    /// expected amplification %: what breaks a tie after that
-    pub amp: f64,
+    /// what settles the rest (`Strategy::last`): expected amplification %,
+    /// or glory successes less despair successes
+    pub last: f64,
     pub choice: Choice,
 }
 
@@ -508,10 +563,44 @@ impl Solver {
         self.cfg.want_glory().saturating_sub(glory) + despair.saturating_sub(self.cfg.allow_despair())
     }
 
-    /// The fewest steps from the target any result reachable from `s` can
-    /// be: every glory slot left a success, no more despair.
-    fn nearest(&self, s: State) -> u8 {
-        self.shortfall(s.gs + (self.cfg.slots - s.gf), s.ds)
+    /// The nearest result still reachable from `s`, as a key that only
+    /// changes when it moves - None where the objective has no such notion,
+    /// or nothing worth anything can be reached.  A target: the fewest steps
+    /// from its box (every glory slot left a success, no more despair).  A
+    /// mark: the highest amplification reachable, as far as the mark, if it
+    /// is one a result would be kept at.
+    fn nearest(&self, s: State) -> Option<u8> {
+        let (best_glory, despair) = (s.gs + (self.cfg.slots - s.gf), s.ds);
+        match self.cfg.strategy.objective {
+            Objective::Target { .. } => Some(self.shortfall(best_glory, despair)),
+            Objective::Above { mark, least } => {
+                let best = self.amplification(best_glory, despair).min(f64::from(mark)) as u8;
+                (best >= least).then_some(best)
+            }
+            _ => None,
+        }
+    }
+
+    /// The second objective at a finished attempt: the steps closed toward
+    /// `Strategy::then`'s (glory, despair), nothing if none (0 with none).
+    pub fn then(&self, glory: u8, despair: u8) -> f64 {
+        match self.cfg.strategy.then {
+            Some((want, allow, gap)) => {
+                let now = f64::from(want.saturating_sub(glory)) + f64::from(despair.saturating_sub(allow));
+                (f64::from(gap) - now).max(0.0)
+            }
+            None => 0.0,
+        }
+    }
+
+    /// What settles the rest at a finished attempt (`Strategy::last`).
+    pub fn last(&self, glory: u8, despair: u8) -> f64 {
+        match self.cfg.strategy.last {
+            Last::Amp => self.amplification(glory, despair),
+            Last::Steps { glory: wg, despair: wd } => {
+                f64::from(wg) * f64::from(glory) - f64::from(wd) * f64::from(despair)
+            }
+        }
     }
 
     /// What the solver steers by at a finished attempt.
@@ -519,11 +608,12 @@ impl Solver {
         let s = &self.cfg.strategy;
         match s.objective {
             Objective::Target { .. } => f64::from(u8::from(self.hits_target(glory, despair))),
-            Objective::Score => {
-                s.w_glory * f64::from(glory) + s.w_despair * f64::from(self.cfg.slots - despair)
-            }
             Objective::Weighted => self.amplification(glory, despair),
-            Objective::Reach { mark } => {
+            Objective::Close { glory: want, despair: allow, gap } => {
+                let now = f64::from(want.saturating_sub(glory)) + f64::from(despair.saturating_sub(allow));
+                (f64::from(gap) - now).max(0.0)
+            }
+            Objective::Above { mark, .. } => {
                 f64::from(u8::from(self.amplification(glory, despair) >= f64::from(mark)))
             }
         }
@@ -535,11 +625,12 @@ impl Solver {
     /// the wipe before looking at score; otherwise the two trade linearly,
     /// wipe_penalty 0 being the plain expected-score maximiser.  Ties - an
     /// all-or-nothing objective scores every action alike once its target is
-    /// met or out of reach - go to the better chance of the nearest box still
-    /// reachable (out of reach of 7/1 with 2 despair already: 7/2), then to
-    /// the more amplification; never at the target's expense, since they only
+    /// met or out of reach - go to the better chance of the nearest result
+    /// still reachable (out of reach of 7/1 with 2 despair already: 7/2; of
+    /// 46% part-way, the highest amplification left), then to the more
+    /// amplification; never at the objective's expense, since they only
     /// decide ties.
-    fn better(&self, cand: (f64, f64, f64, f64), best: (f64, f64, f64, f64)) -> bool {
+    fn better(&self, cand: (f64, f64, f64, f64, f64), best: (f64, f64, f64, f64, f64)) -> bool {
         const EPS: f64 = 1e-12;
         let (c, b) = if self.cfg.safety_first {
             if (cand.0 - best.0).abs() > EPS {
@@ -553,10 +644,12 @@ impl Solver {
         if (c - b).abs() > EPS {
             return c > b;
         }
-        if (cand.2 - best.2).abs() > EPS {
-            return cand.2 > best.2;
+        for (x, y) in [(cand.2, best.2), (cand.3, best.3)] {
+            if (x - y).abs() > EPS {
+                return x > y;
+            }
         }
-        cand.3 > best.3 + EPS
+        cand.4 > best.4 + EPS
     }
 
     /// Solve a state exactly: P(finish), expected score, the optimal choice.
@@ -568,34 +661,41 @@ impl Solver {
             return hit;
         }
         let result = if self.is_terminal(s) {
-            let (score, amp) = (self.objective(s.gs, s.ds), self.amplification(s.gs, s.ds));
-            // a finished attempt is in its own nearest box
-            let near = f64::from(u8::from(self.cfg.strategy.is_target()));
-            Value { p_finish: 1.0, score, near, amp, choice: Choice::Done }
+            let (score, then, last) = (self.objective(s.gs, s.ds), self.then(s.gs, s.ds), self.last(s.gs, s.ds));
+            // a finished attempt is its own nearest result (if it is one worth anything)
+            let near = f64::from(u8::from(self.nearest(s).is_some()));
+            Value { p_finish: 1.0, score, then, near, last, choice: Choice::Done }
         } else {
-            let target = self.cfg.strategy.is_target();
             let k = self.nearest(s);
             let mut best: Option<Value> = None;
             for action in self.legal_actions(s) {
-                let (mut p_finish, mut score, mut near, mut amp) = (0.0, 0.0, 0.0, 0.0);
+                let (mut p_finish, mut score, mut then, mut near, mut last) = (0.0, 0.0, 0.0, 0.0, 0.0);
                 for (prob, next, _ok) in self.transitions(s, action) {
                     if prob != 0.0 {
                         let sub = self.value(next);
                         p_finish += prob * sub.p_finish;
                         score += prob * sub.score;
-                        amp += prob * sub.amp;
-                        // a step that puts this box out of reach ends nearer to nothing
-                        if target && self.nearest(next) == k {
+                        then += prob * sub.then;
+                        last += prob * sub.last;
+                        // a step that puts the nearest result out of reach ends nearer to nothing
+                        if k.is_some() && self.nearest(next) == k {
                             near += prob * sub.near;
                         }
                     }
                 }
-                if best.is_none_or(|b| self.better((p_finish, score, near, amp), (b.p_finish, b.score, b.near, b.amp))) {
-                    best = Some(Value { p_finish, score, near, amp, choice: Choice::Act(action) });
+                if best.is_none_or(|b| {
+                    self.better((p_finish, score, then, near, last), (b.p_finish, b.score, b.then, b.near, b.last))
+                }) {
+                    best = Some(Value { p_finish, score, then, near, last, choice: Choice::Act(action) });
                 }
             }
             // a dead end inherits nothing at all: 0 glory, 0 despair, the floor
-            best.unwrap_or(Value { p_finish: 0.0, score: 0.0, near: 0.0, amp: 0.0, choice: Choice::DeadEnd })
+            // (and below any finished result on glory less despair)
+            let last = match self.cfg.strategy.last {
+                Last::Amp => 0.0,
+                Last::Steps { despair: wd, .. } => -f64::from(wd) * f64::from(self.cfg.slots) - 1.0,
+            };
+            best.unwrap_or(Value { p_finish: 0.0, score: 0.0, then: 0.0, near: 0.0, last, choice: Choice::DeadEnd })
         };
         self.memo.insert(s.key(), result);
         result

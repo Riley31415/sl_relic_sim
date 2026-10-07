@@ -2,7 +2,7 @@
 //! look-ahead plan does next - which relic to attempt and how to play it,
 //! whether to keep the result, or to summon.
 //!
-//!     relic-advisor shot.png                  advise toward level 20 + 46%
+//!     relic-advisor shot.png                  advise toward level 20 + 43%
 //!     relic-advisor shot.png --target 20      a different look-ahead target
 //!     relic-advisor shot.png --level 19       when the level can't be read
 //!     relic-advisor --level 18 --board 7/1/207 7/1/115 ...   no screenshot
@@ -16,7 +16,7 @@ use image::{Rgb, RgbImage};
 use relic::levels::report::{bar_text, describe_step, requirement_text};
 use relic::levels::{
     self, Advice, Bar, CRIT, Game, Move, Next, Quest, RELICS, Relic, TableKey, Target, amplification,
-    outcomes,
+    expected_closing, outcomes,
 };
 use relic::solver::Config;
 use relic_advisor::vision::{self, Frame, Screen, Spot};
@@ -34,11 +34,15 @@ struct Args {
     level: Option<usize>,
     /// what the plan is for: a level (2-20), or 20+MARK for the crit relic
     /// farmed to MARK% once at level 20 (43, 46, 48 or 50)
-    #[arg(long, default_value = "20+46")]
+    #[arg(long, default_value = "20+43")]
     target: String,
     /// the twelve relics typed in, in screen order, as glory/despair/on-hand
     #[arg(long, num_args = 12, value_name = "G/D/N")]
     board: Option<Vec<String>>,
+    /// how full the pity bar is, in percent: a plan that rolls spare relics
+    /// for the pity only once they can fill it needs this to do so
+    #[arg(long, value_name = "PERCENT")]
+    pity: Option<f64>,
     /// show the ink every number was read from
     #[arg(long)]
     dump: bool,
@@ -101,7 +105,11 @@ fn run(a: Args) -> Result<String, String> {
         (None, None, None) => return Err(format!("{out}\ncould not read the requirement - give --level")),
     };
 
-    let advice = game.advise(&plan, target, level, &board.states, &board.stock)?;
+    let pity = a.pity.map(|pct| {
+        let needed = levels::pity_needed((level + 1).min(levels::MAX_LEVEL));
+        (f64::from(needed) * pct.clamp(0.0, 100.0) / 100.0).round() as u32
+    });
+    let advice = game.advise(&plan, target, level, &board.states, &board.stock, pity)?;
     out.push_str(&situation(game, &advice, &board));
     let step = describe_step(game, &plan, advice.goal);
     let goal = advice.goal;
@@ -277,7 +285,13 @@ fn situation(game: &Game, advice: &Advice, board: &Board) -> String {
         _ => String::new(),
     };
     let need = requirement_text(game, advice.goal, false);
-    wrap(&format!("inheritor level {}, working on level {}: {need}{short}", advice.level, advice.goal), 2, 8)
+    // the totals the rolls close the gap to, when they are not this level's own
+    let ahead = match (advice.horizon, quest) {
+        (Some(h), Quest::Total { glory, despair }) if h == (*glory, *despair) => String::new(),
+        (Some((g, d)), _) => format!("; rolls play to the totals ahead, {g} glory / {d} despair"),
+        (None, _) => String::new(),
+    };
+    wrap(&format!("inheritor level {}, working on level {}: {need}{short}{ahead}", advice.level, advice.goal), 2, 8)
 }
 
 fn relic_now(i: usize, board: &Board) -> String {
@@ -312,28 +326,15 @@ fn wrap(text: &str, first: usize, rest: usize) -> String {
 /// How an attempt is played, and the autoplayer setting that plays it so.
 fn play_text(key: TableKey) -> String {
     match key {
-        TableKey::Target { glory, despair: Some(d), .. } => {
-            format!(
-                "all-or-nothing for {glory}+ glory / {d}- despair   [autoplayer: Target, G {glory}, D {d}]"
-            )
-        }
-        TableKey::Target { glory, despair: None, level } => {
-            let any = Config::for_level(i64::from(level), Default::default()).map_or(10, |c| c.slots);
-            format!(
-                "all-or-nothing for {glory}+ glory, any despair   [autoplayer: Target, G {glory}, D {any}]"
-            )
-        }
-        TableKey::Score { w_glory, w_despair, .. } => {
-            let (g, d) = (f64::from_bits(w_glory), f64::from_bits(w_despair));
-            if g == d {
-                "for max glory and min despair, weighted equally (not all-or-nothing)".to_string()
-            } else {
-                format!("for max glory and min despair, weighted {g}:{d} (not all-or-nothing)")
-            }
-        }
-        TableKey::Reach { mark, .. } => {
-            format!("all-or-nothing for {mark}%+ amplification   [autoplayer: Amplification >= {mark}%]")
-        }
+        TableKey::Close { glory, despair, gap, tie: (wg, wd), .. } => format!(
+            "to maximize glory, minimize despair until a limit - max useful glory {glory}, min useful despair {despair}: what closes the totals gap for this relic, {gap} useful steps off now (each glory gained or despair shed counts) - then for more glory, less despair, weighed {wg} : {wd} as those totals still need them   [autoplayer: Maximize glory, minimize despair until a limit - Max useful Glory {glory}, Min useful Despair {despair}]"
+        ),
+        TableKey::Target { glory, despair, then: (tg, td, gap), .. } => format!(
+            "to maximize glory, minimize despair above a target - the best chance of {glory}+ glory / {despair}- despair (its bar) - then until a limit, max useful glory {tg}, min useful despair {td}: what closes the totals gap for this relic, {gap} useful steps off now   [autoplayer: Maximize glory, minimize despair above a target - Glory Target {glory}, Despair Target {despair}]"
+        ),
+        TableKey::Above { mark, least, .. } => format!(
+            "to maximize amplification above a target - the best chance of {mark}% or more, then the most amplification (a result is kept from {least}%; if {mark}% slips out of reach, for the highest still possible)   [autoplayer: Maximize amplification above a target - Minimum Useful Amplification {mark}%]"
+        ),
     }
 }
 
@@ -387,7 +388,7 @@ fn advice_text(game: &Game, advice: &Advice, board: &Board) -> String {
         }
         out.push_str("     and Keep Current Effect on anything else\n");
         let kept = chance(advice, |r| game.keeps(advice, &board.states, r) == Some(true));
-        let odds = match hit {
+        let mut odds = match hit {
             Some(bar) => format!(
                 "{:.1}% to hit {}, {:.1}% to get a result worth keeping",
                 100.0 * chance(advice, |r| bar.met_by(r)),
@@ -396,6 +397,10 @@ fn advice_text(game: &Game, advice: &Advice, board: &Board) -> String {
             ),
             None => format!("{:.1}% to get a result worth keeping", 100.0 * kept),
         };
+        if let Some((relic, key @ TableKey::Close { glory, despair, .. })) = advice.roll() {
+            let closed = expected_closing(key, (glory, despair), board.states[relic]);
+            odds.push_str(&format!(", {closed:.2} useful steps until the limit on average"));
+        }
         out.push_str(&format!("     odds: {odds}\n"));
     };
     match &advice.next {
@@ -418,20 +423,20 @@ fn advice_text(game: &Game, advice: &Advice, board: &Board) -> String {
             out.push_str(&format!("     play it {}\n", play_text(*key)));
             keep_block(&mut out, Some(*bar));
             let why = format!(
-                "why: the plan is working on {} - and attempts, of those with 10 on hand, the one likeliest to make its step (the one you hold the most of, of equals)",
+                "why: the plan is working on {} - and attempts, of those with 10 on hand, the one that closes the most of the gap per attempt (the one you hold the most of, of equals)",
                 work_text(advice, board)
             );
             out.push_str(&wrap(&why, 5, 10));
         }
-        Next::Move(Move::Filler { relic, bar, key }) => {
+        Next::Move(Move::Filler { relic, key, .. }) => {
             out.push_str(&format!(">> ATTEMPT (filler, for the pity)  {}\n", relic_now(*relic, board)));
             out.push_str(&format!("     play it {}\n", play_text(*key)));
-            keep_block(&mut out, Some(*bar));
+            keep_block(&mut out, None);
             let why = format!(
                 "why: nothing the quest needs has 10 on hand ({}), so the plan rolls the spare relic you hold \
-                 the most of toward {} to fill the pity meter instead of summoning",
-                work_text(advice, board),
-                bar_text(bar.glory, bar.despair)
+                 the most of to fill the pity meter instead of summoning - the pity comes whatever it rolls, \
+                 and a result is kept only if it narrows the gap or is better on both bars",
+                work_text(advice, board)
             );
             out.push_str(&wrap(&why, 5, 10));
         }

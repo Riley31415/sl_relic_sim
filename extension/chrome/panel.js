@@ -9,12 +9,14 @@ import { REF, at, classify } from './lib/vision.js';
 import { TIER_PERCENT, show as showState } from './lib/logic.js';
 
 const $ = (id) => document.getElementById(id);
-const DEFAULTS = { mode: 'advisor', goal: '20+46', level: 18, kind: 'max', glory: 7, despair: 2, mark: 30, attempts: 1, wipe: 0, clickDelay: 1.5, clickMethod: 'mouse' };
+const DEFAULTS = {
+  mode: 'advisor', goal: '20+43', level: 18, kind: 'max', glory: 7, despair: 2, closeGlory: 9, closeDespair: 0, mark: '', clickDelay: 1.5,
+};
 const FIELDS = Object.keys(DEFAULTS);
 
 const solver = await RelicSolver.load(await (await fetch('relic.wasm')).arrayBuffer());
 const stored = await chrome.storage.local.get(['settings']);
-chrome.storage.local.remove('rates'); // samples from an older version
+chrome.storage.local.remove(['rates', 'escalation']); // kept by older versions
 let runner = null;
 let tab = null;
 let lastFrame = null;
@@ -23,35 +25,107 @@ let pendingAsk = null;
 // ---------------------------------------------------------------- settings
 
 for (const f of FIELDS) $(f).value = stored.settings?.[f] ?? DEFAULTS[f];
+// an older version's "gain toward a mark" is max amplification above that mark
+if (stored.settings?.kind === 'reach') $('kind').value = 'max';
+// and its weighted glory / despair play is "until a limit" now
+if (stored.settings?.kind === 'score') $('kind').value = 'close';
+// an older version kept a limit in the target's fields
+if (stored.settings?.kind === 'close' && stored.settings.closeGlory == null) {
+  $('closeGlory').value = stored.settings.glory ?? DEFAULTS.closeGlory;
+  $('closeDespair').value = stored.settings.despair ?? DEFAULTS.closeDespair;
+}
+
+/**
+ * What the glory, despair and amplification settings can be at the
+ * inheritor level set: glory from the free glory successes an attempt opens
+ * with up to every slot, despair from none up to every slot that does not
+ * open as a failure (from level 19 one does), amplification up to a full
+ * glory bar (+5% a slot).  The level's if it exists, else level 20's.
+ */
+function limits() {
+  let board;
+  try {
+    board = solver.board(Number($('level').value));
+  } catch {
+    board = solver.board(20);
+  }
+  return { glory: [board.startGlory, board.slots], despair: [0, board.slots - board.startDespairFail], amp: [0, 5 * board.slots] };
+}
+
+/** Set each box's range to the level's, and bring a value outside it back in. */
+function applyLimits() {
+  const l = limits();
+  for (const [id, [lo, hi]] of [['glory', l.glory], ['closeGlory', l.glory], ['despair', l.despair], ['closeDespair', l.despair], ['mark', l.amp]]) {
+    const el = $(id);
+    el.min = lo;
+    el.max = hi;
+    if (el.value.trim() === '') continue; // a blank Minimum Useful Amplification: beat the memory
+    const v = Number(el.value);
+    if (Number.isFinite(v) && (v < lo || v > hi)) el.value = Math.min(hi, Math.max(lo, Math.round(v)));
+  }
+}
 
 function readSettings() {
-  const num = (id, lo, hi) => {
+  const l = limits();
+  const num = (id, lo, hi, name = id) => {
     const v = Number($(id).value);
-    if (!Number.isInteger(v) || v < lo || v > hi) throw new Error(`${id} must be a whole number from ${lo} to ${hi}`);
+    if (!Number.isInteger(v) || v < lo || v > hi) throw new Error(`${name} must be a whole number from ${lo} to ${hi}`);
     return v;
   };
   const kind = $('kind').value;
-  const objective = { kind, wipePenalty: Math.max(0, Number($('wipe').value) || 0) };
-  if (kind === 'target') Object.assign(objective, { glory: num('glory', 0, 10), despair: num('despair', 0, 10) });
-  if (kind === 'reach') objective.mark = num('mark', 0, 50);
+  const objective = { kind };
+  if (kind === 'target') {
+    Object.assign(objective, { glory: num('glory', ...l.glory, 'Glory Target'), despair: num('despair', ...l.despair, 'Despair Target') });
+  }
+  if (kind === 'close') {
+    Object.assign(objective, { glory: num('closeGlory', ...l.glory, 'Max useful Glory'), despair: num('closeDespair', ...l.despair, 'Min useful Despair') });
+  }
+  if (kind === 'max' && $('mark').value.trim() !== '') objective.mark = num('mark', ...l.amp, 'Minimum Useful Amplification');
   const clickDelay = Number($('clickDelay').value);
   if (!(clickDelay >= 0.1 && clickDelay <= 10)) throw new Error('click delay must be from 0.1 to 10 seconds');
   const [goalLevel, tier] = $('goal').value.split('+').map(Number);
   return {
     mode: $('mode').value, goal: { level: goalLevel, tier: tier || 0 },
-    level: num('level', 1, 28), objective, attempts: num('attempts', 1, 999),
-    clickMethod: $('clickMethod').value, clickDelay,
+    level: num('level', 1, 20, 'Inheritor level'), objective, clickDelay,
   };
+}
+
+/**
+ * The advisor's level and objective for the attempt it starts, copied into
+ * the One relic settings: a run stopped part-way and started again (its own
+ * record of the attempt gone or stale) finishes it the same way.
+ */
+function useSettings({ level, objective: o }) {
+  $('level').value = level;
+  $('kind').value = o.kind;
+  if (o.kind === 'target') {
+    $('glory').value = o.glory;
+    $('despair').value = o.despair ?? limits().despair[1]; // any despair: as much as the bar can hold
+  }
+  if (o.kind === 'close') {
+    $('closeGlory').value = o.glory;
+    $('closeDespair').value = o.despair;
+  }
+  if (o.kind === 'max') $('mark').value = o.mark ?? '';
+  applyLimits();
+  saveSettings();
 }
 
 function saveSettings() {
   chrome.storage.local.set({ settings: Object.fromEntries(FIELDS.map((f) => [f, $(f).value])) });
   const mode = $('mode').value;
   for (const el of document.querySelectorAll('[data-mode], [data-for]')) {
-    el.hidden = (el.dataset.mode && el.dataset.mode !== mode) || (el.dataset.for && el.dataset.for !== $('kind').value);
+    el.hidden = (el.dataset.mode && el.dataset.mode !== mode) || (el.dataset.for && !el.dataset.for.split(' ').includes($('kind').value));
   }
 }
 for (const f of FIELDS) $(f).addEventListener('change', saveSettings);
+// the ranges follow the inheritor level as it is typed
+$('level').addEventListener('input', applyLimits);
+$('level').addEventListener('change', () => {
+  applyLimits();
+  saveSettings();
+});
+applyLimits();
 saveSettings();
 
 // ---------------------------------------------------------------------- ui
@@ -91,8 +165,10 @@ function show(frame, info = {}) {
   $('rate').textContent = info.tier != null ? `${TIER_PERCENT[info.tier]}%` : '-';
   $('move').textContent = info.action ? MOVES[info.action] : '-';
   const kind = runner?.objective?.kind ?? 'max';
-  const worth = kind === 'max' ? `+${info.expected?.toFixed(1)}% amplification`
-    : kind === 'score' ? `score ${info.expected?.toFixed(2)}` : `${(100 * info.expected).toFixed(1)}% to hit`;
+  const mark = runner?.objective?.mark;
+  const worth = kind === 'close' ? `${info.expected?.toFixed(2)} useful steps until the limit`
+    : kind === 'target' ? `${(100 * info.expected).toFixed(1)}% to hit the target`
+      : `${(100 * info.expected).toFixed(1)}% to ${mark != null ? `reach the +${mark}% Minimum Useful Amplification` : 'beat the memory'}`;
   $('expected').textContent = info.expected == null ? '-' : `${worth}, ${(100 * info.finish).toFixed(1)}% no wipe`;
   draw(frame, info);
 }
@@ -203,7 +279,9 @@ function finishAsk(tier) {
 }
 
 const ui = {
-  log, show, askTier, askNumber,
+  log, show, askTier, askNumber, useSettings,
+  // the frame a run stopped on, unrecognised: kept for a look
+  saveFrame: (frame) => (frame?.png ? download(frame) : null),
   // the attempt the advisor has in play, so a stopped run can finish it
   saveAttempt: (record) => (record ? chrome.storage.local.set({ attempt: record }) : chrome.storage.local.remove('attempt')),
   loadAttempt: async () => (await chrome.storage.local.get('attempt')).attempt ?? null,
@@ -216,7 +294,7 @@ async function gameTab() {
   if (!active) throw new Error('No active tab.');
   if (!tab || tab.target.tabId !== active.id) {
     await tab?.detach();
-    tab = new GameTab(active.id);
+    tab = new GameTab(active.id, (text) => log(text, 'warn'));
   }
   await tab.attach();
   return tab;
@@ -276,12 +354,19 @@ $('save').onclick = async () => {
     }
   }
   if (!frame) return log('Nothing captured yet.', 'warn');
-  const a = document.createElement('a');
-  a.href = `data:image/png;base64,${frame.png}`;
-  a.download = `relic-${frame.screen.kind}-${Date.now()}.png`;
-  a.click();
+  download(frame);
   log(`Saved the ${frame.screen.kind === 'unknown' ? 'current' : frame.screen.kind} screen.`);
 };
+
+/** A frame to the Downloads folder, as relic-<screen>-<time>.png; its name. */
+function download(frame) {
+  const name = `relic-${frame.screen.kind}-${Date.now()}.png`;
+  const a = document.createElement('a');
+  a.href = `data:image/png;base64,${frame.png}`;
+  a.download = name;
+  a.click();
+  return name;
+}
 
 chrome.debugger.onDetach.addListener((source, reason) => {
   if (tab && source.tabId === tab.target.tabId && tab.attached) {

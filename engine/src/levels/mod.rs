@@ -19,7 +19,7 @@ use rayon::prelude::*;
 
 pub use rules::{Bar, Quest, Relic, RelicSet, contains, members, set_of, totals};
 pub use sim::{Economy, Game, LevelUp, Move, Run, RunOptions};
-pub use tables::{TableKey, outcomes};
+pub use tables::{TableKey, expected_closing, outcomes};
 
 use crate::economy::{
     CONVERT_FROM, CONVERT_TO, DIAMONDS_PER_SUMMON, RELIC_TYPES, RELICS_PER_ATTEMPT, RELICS_PER_SUMMON,
@@ -65,10 +65,9 @@ pub const CRIT: usize = 1;
 /// As far as the requirement table is known.
 pub const MAX_LEVEL: usize = 20;
 pub const SEED: u64 = 20260922;
-/// Greedy mode keeps going past the top level: the crit relic farmed to each
-/// of these amplifications, each tier a separate farm from level 20 played
-/// for its own mark.
-pub const GREEDY_TIERS: [u8; 4] = [43, 46, 48, 50];
+/// The crit relic tiers a goal can go on to past the top level: the crit
+/// relic farmed to this amplification at level 20.
+pub const CRIT_TIERS: [u8; 4] = [43, 46, 48, 50];
 
 /// What the inheritor needs in order to BE at each level; level 1 is free.
 pub fn requirements() -> Vec<Option<Quest>> {
@@ -192,6 +191,46 @@ impl Game {
             .collect()
     }
 
+    /// `runs` players under `plan` as they stand on reaching `level` (run i
+    /// with the luck it has in `simulate`), to resume under plans that agree
+    /// with `plan` on every level up to `level`.
+    pub fn prefixes(
+        &self,
+        plan: &Plan,
+        runs: u64,
+        seed: u64,
+        options: &RunOptions,
+        level: usize,
+    ) -> Result<Vec<sim::Partial<'_>>, String> {
+        let rules = self.rules(plan);
+        (0..runs)
+            .into_par_iter()
+            .map_init(LocalTables::default, |tables, i| {
+                let mut partial = sim::start(self, options, (ATK, CRIT), Rng::for_run(seed, i));
+                sim::climb(self, &rules, options, (ATK, CRIT), tables, &mut partial, level)?;
+                Ok(partial)
+            })
+            .collect()
+    }
+
+    /// Mean diamonds to the end of `options` (the top level, or the tier),
+    /// resuming `prefixes` under `plan` - the same as the whole runs would
+    /// cost, when `plan` agrees with the prefixes' plan on the levels they
+    /// played.
+    pub fn mean_cost_from(&self, plan: &Plan, prefixes: &[sim::Partial], options: &RunOptions) -> Result<f64, String> {
+        let rules = self.rules(plan);
+        let sum = prefixes
+            .par_iter()
+            .map_init(LocalTables::default, |tables, partial| {
+                let mut partial = partial.clone();
+                sim::climb(self, &rules, options, (ATK, CRIT), tables, &mut partial, options.max_level)?;
+                let run = sim::finish(options, (ATK, CRIT), tables, partial);
+                Ok::<u64, String>(run.levels.last().expect("at least level 1").diamonds)
+            })
+            .try_reduce(|| 0u64, |a, b| Ok(a + b))?;
+        Ok(sum as f64 / (prefixes.len().max(1)) as f64)
+    }
+
     /// Mean diamonds spent to reach each level from 1 to `options.max_level`
     /// (index 0 is level 1), without keeping every run.  Summed as whole
     /// diamonds, so the answer never depends on how the runs were split.
@@ -282,7 +321,9 @@ pub enum Profile {
 }
 
 pub const DEFAULT_PROFILE: (u8, u8) = (4, 2);
-pub const FILLERS: [Option<(u8, u8)>; 5] = [None, Some((4, 2)), Some((4, 1)), Some((5, 2)), Some((5, 1))];
+/// When a filler is rolled: always (None), or only when the spare relics on
+/// hand can fill the pity bar in at most this many attempts.
+pub const FILLER_WINDOWS: [Option<u8>; 4] = [None, Some(5), Some(15), Some(30)];
 pub const TOTAL_PROFILES: [Profile; 7] = [
     Profile::Bar(3, 2),
     Profile::Bar(3, 1),
@@ -301,19 +342,27 @@ pub struct StepChoice {
     /// None: the default 4/2 (a level that names its relics always rolls them
     /// to its own bar)
     pub profile: Option<Profile>,
-    /// on a total level, also keep rolls that close the board's gap
-    pub closer: bool,
-    /// play attempts for max glory + min despair, not all-or-nothing
-    pub score: bool,
     /// keep the relics the next named-relic level needs out of this level's
     /// work and filler
     pub bank: bool,
     /// when nothing the quest needs is affordable: None to summon, or a bar to
     /// roll the best-stocked spare relic toward, for the pity
-    pub filler: Option<(u8, u8)>,
+    pub filler: bool,
+    /// with a filler: roll it only when the spare relics on hand can fill the
+    /// pity bar in at most this many attempts - a level-up the stock can pay
+    /// for outright - and summon otherwise (None: roll it whenever stuck)
+    pub filler_within: Option<u8>,
     /// which relics the quest work goes to first, and whether the others wait
     /// while any of them still needs work ("hard") or not ("soft")
     pub prefer: Option<(RelicSet, bool)>,
+    /// every attempt closes the gap to the totals ahead - the most glory and
+    /// the least despair any totals level up to the target asks - rather
+    /// than this level's own (`Game::horizon_for`)
+    pub ahead: bool,
+    /// a relic traded off its bar for a result the keep rule ranks as high
+    /// counts as having met it, so the bars go further once every relic has
+    /// (rather than the work waiting on it)
+    pub trades: bool,
 }
 
 impl StepChoice {
@@ -322,29 +371,28 @@ impl StepChoice {
         StepChoice { profile: Some(profile), ..Self::default() }
     }
 
-    pub fn filler(bar: (u8, u8)) -> Self {
-        StepChoice { filler: Some(bar), ..Self::default() }
-    }
-
-    pub fn closer(self) -> Self {
-        StepChoice { closer: true, ..self }
-    }
-
-    pub fn score(self) -> Self {
-        StepChoice { score: true, ..self }
+    pub fn filler() -> Self {
+        StepChoice { filler: true, ..Self::default() }
     }
 
     pub fn bank(self) -> Self {
         StepChoice { bank: true, ..self }
     }
 
-    pub fn with_filler(self, bar: (u8, u8)) -> Self {
-        StepChoice { filler: Some(bar), ..self }
+    pub fn with_filler(self) -> Self {
+        StepChoice { filler: true, ..self }
     }
 
-    /// A compact code for the saved plan files: "R,c,s,b,f41" for repair,
-    /// keep gap-closers, score, bank, filler 4/1; "B52" for a 5/2 bar; "-" for
-    /// the default.  `prefer` is not a search knob and has no code.
+    /// The filler only when the spare stock fills the pity bar within `attempts`.
+    pub fn within(self, attempts: u8) -> Self {
+        StepChoice { filler_within: Some(attempts), ..self }
+    }
+
+    /// A compact code for the saved plan files: "R,a,b,t,f" for repair, the
+    /// totals ahead, bank, trades as good as the bar, filler ("fw15": only
+    /// when the spare stock fills the pity bar within 15 attempts); "B52"
+    /// for a 5/2 bar; "-" for the default.
+    /// `prefer` is not a search knob and has no code.
     pub fn code(&self) -> String {
         let mut parts = Vec::new();
         match self.profile {
@@ -352,13 +400,16 @@ impl StepChoice {
             Some(Profile::Bar(g, d)) => parts.push(format!("B{g}{d}")),
             None => {}
         }
-        for (on, flag) in [(self.closer, "c"), (self.score, "s"), (self.bank, "b")] {
+        for (on, flag) in [(self.ahead, "a"), (self.bank, "b"), (self.trades, "t")] {
             if on {
                 parts.push(flag.to_string());
             }
         }
-        if let Some((g, d)) = self.filler {
-            parts.push(format!("f{g}{d}"));
+        if self.filler {
+            parts.push(match self.filler_within {
+                Some(n) => format!("fw{n}"),
+                None => "f".to_string(),
+            });
         }
         if parts.is_empty() { "-".to_string() } else { parts.join(",") }
     }
@@ -375,14 +426,30 @@ impl StepChoice {
         for part in code.split(',').map(str::trim).filter(|p| !p.is_empty() && *p != "-") {
             match part {
                 "R" => choice.profile = Some(Profile::Repair),
-                "c" => choice.closer = true,
-                "s" => choice.score = true,
+                // an older plan's "keep gap-closers": every roll that narrows the gap is kept now
+                "c" => {}
+                // an older plan's "s" (max glory + min despair): every attempt looks ahead now
+                "s" => {}
+                "a" => choice.ahead = true,
+                "t" => choice.trades = true,
                 "b" => choice.bank = true,
                 _ if part.starts_with('B') => {
                     let (g, d) = digits(&part[1..])?;
                     choice.profile = Some(Profile::Bar(g, d));
                 }
-                _ if part.starts_with('f') => choice.filler = Some(digits(&part[1..])?),
+                _ if part.starts_with('f') => {
+                    // an older plan's filler bar ("f42") no longer matters: a
+                    // filler is kept as a quest roll is
+                    let (bar, within) = part[1..].split_once('w').map_or((&part[1..], None), |(b, w)| (b, Some(w)));
+                    if !bar.is_empty() {
+                        digits(bar)?;
+                    }
+                    choice.filler = true;
+                    choice.filler_within = match within {
+                        Some(w) => Some(w.parse().map_err(|_| format!("bad window '{w}' in step code '{code}'"))?),
+                        None => None,
+                    };
+                }
                 _ => return Err(format!("unknown part '{part}' in step code '{code}'")),
             }
         }
@@ -393,21 +460,15 @@ impl StepChoice {
         let bar = |(g, d): (u8, u8)| report::bar_text(g, Some(d));
         let mut parts = match self.profile {
             None => vec!["roll the named relics to the bar".to_string()],
-            Some(profile) => {
-                let mut parts = vec![match profile {
-                    Profile::Repair => "repair".to_string(),
-                    Profile::Bar(g, d) => bar((g, d)),
-                }];
-                parts.push(if self.score { "max glory + min despair" } else { "all-or-nothing" }.to_string());
-                if self.closer {
-                    parts.push("keep gap-closers".to_string());
-                }
-                parts
-            }
+            Some(profile) => vec![match profile {
+                Profile::Repair => "repair".to_string(),
+                Profile::Bar(g, d) => bar((g, d)),
+            }],
         };
-        parts.push(match self.filler {
-            Some(f) => format!("filler to {}", bar(f)),
-            None => "no filler".to_string(),
+        parts.push(match (self.filler, self.filler_within) {
+            (true, Some(n)) => format!("filler when it fills the pity bar within {n}"),
+            (true, None) => "filler".to_string(),
+            (false, _) => "no filler".to_string(),
         });
         if self.bank {
             parts.push("bank the next named relics".to_string());
@@ -483,21 +544,21 @@ impl Plan {
         LevelRules {
             base: Bar::new(g, Some(d)),
             surgical: s.profile == Some(Profile::Repair),
-            closer: s.closer,
-            score: s.score.then_some((1.0, 1.0)),
-            filler: s.filler.map(|(g, d)| Bar::new(g, Some(d))),
+            filler: s.filler,
+            filler_within: if s.filler { s.filler_within.map(u32::from) } else { None },
             locked: self.protected(game, level),
-            spare: game.future_named(level) | if level + 1 >= MAX_LEVEL { 1 << CRIT } else { 0 },
             prefer: s.prefer,
+            ahead: s.ahead,
+            trades: s.trades,
         }
     }
 }
 
-/// The two plans LEVELS.md is about, found by the searches below with the
-/// pity rule on, and a do-the-minimum baseline.
+/// The level-20 look-ahead plan, written out (a start for the searches),
+/// and a do-the-minimum baseline.
 pub fn strategies() -> Vec<(&'static str, Plan)> {
     use Profile::{Bar as B, Repair};
-    let total = |p: Profile| StepChoice::build(p).closer().score();
+    let total = StepChoice::build;
     vec![
         // the cheapest route to the top level overall (`--lookahead`)
         (
@@ -505,43 +566,18 @@ pub fn strategies() -> Vec<(&'static str, Plan)> {
             Plan::new([
                 (4, total(B(5, 1))),
                 (6, total(Repair)),
-                (7, StepChoice::build(B(4, 2)).score()),
-                (8, total(Repair).with_filler((4, 1))),
+                (7, StepChoice::build(B(4, 2))),
+                (8, total(Repair).with_filler()),
                 (10, total(B(5, 2))),
-                (11, total(Repair).with_filler((5, 2))),
-                (12, total(Repair).with_filler((5, 2))),
-                (14, total(Repair).with_filler((4, 1))),
-                (15, total(Repair).with_filler((4, 2))),
-                (16, total(Repair).with_filler((4, 2))),
-                (17, total(Repair).with_filler((4, 1))),
-                (18, total(Repair).with_filler((4, 2))),
-                (19, StepChoice::build(Repair).closer().with_filler((4, 2))),
-                (20, StepChoice::build(Repair).closer().with_filler((4, 2))),
-            ]),
-        ),
-        // every level-up as cheap as it can be on its own (`--greedy`)
-        (
-            "greedy",
-            Plan::new([
-                (2, StepChoice::filler((4, 2))),
-                (3, StepChoice::filler((4, 2))),
-                (4, total(B(5, 2))),
-                (5, StepChoice::filler((4, 2))),
-                (6, total(B(4, 1)).with_filler((5, 2))),
-                (7, StepChoice::build(B(4, 2)).with_filler((4, 2))),
-                (8, total(Repair).with_filler((4, 1))),
-                (9, StepChoice::filler((4, 2))),
-                (10, total(Repair).with_filler((4, 1))),
-                (11, total(Repair).with_filler((5, 2))),
-                (12, total(Repair).with_filler((5, 2))),
-                (13, StepChoice::filler((4, 2))),
-                (14, total(Repair).with_filler((4, 1))),
-                (15, total(Repair).with_filler((4, 2))),
-                (16, total(Repair).with_filler((4, 2))),
-                (17, total(Repair).with_filler((4, 1))),
-                (18, total(Repair).with_filler((4, 2))),
-                (19, StepChoice::build(Repair).closer().with_filler((4, 2))),
-                (20, total(Repair).with_filler((4, 2))),
+                (11, total(Repair).with_filler()),
+                (12, total(Repair).with_filler()),
+                (14, total(Repair).with_filler()),
+                (15, total(Repair).with_filler()),
+                (16, total(Repair).with_filler()),
+                (17, total(Repair).with_filler()),
+                (18, total(Repair).with_filler()),
+                (19, StepChoice::build(Repair).with_filler()),
+                (20, StepChoice::build(Repair).with_filler()),
             ]),
         ),
         // 4/2 everywhere, all-or-nothing, summon whenever stuck
@@ -592,9 +628,9 @@ impl Target {
     }
 }
 
-/// Every look-ahead target: each level from 2 to the top, then greedy's tiers.
+/// Every look-ahead target: each level from 2 to the top, then the crit relic tiers.
 pub fn targets() -> Vec<Target> {
-    (2..=MAX_LEVEL).map(Target::level).chain(GREEDY_TIERS.iter().map(|&m| Target::tier(m))).collect()
+    (2..=MAX_LEVEL).map(Target::level).chain(CRIT_TIERS.iter().map(|&m| Target::tier(m))).collect()
 }
 
 /// The look-ahead plan for each target, in `targets()` order: the one saved
@@ -638,55 +674,47 @@ pub fn strategy(name: &str) -> Option<Plan> {
     strategies().into_iter().find(|(n, _)| *n == name).map(|(_, plan)| plan)
 }
 
-/// The crit relic tiers a named plan goes on to farm at the top level.
-pub fn tiers(name: &str) -> &'static [u8] {
-    if name == "greedy" { &GREEDY_TIERS } else { &[] }
-}
 
 /// Every StepChoice worth trying for `level` (banking aside).  A level that
-/// names its relics only decides its filler: all-or-nothing is the best way
-/// to clear a bar, and no other relic is part of its quest.
+/// names its relics only decides its filler: closing each relic's gap to the
+/// bar is the way to clear it, and no other relic is part of its quest.
 pub fn step_choices(game: &Game, level: usize) -> Vec<StepChoice> {
-    let with = |profile: Option<Profile>, closer, score, filler| StepChoice {
+    // no filler, or a filler with each window
+    let fillers: Vec<(bool, Option<u8>)> =
+        std::iter::once((false, None)).chain(FILLER_WINDOWS.iter().map(|&w| (true, w))).collect();
+    let with = |profile: Option<Profile>, (filler, filler_within): (bool, Option<u8>)| StepChoice {
         profile,
-        closer,
-        score,
         filler,
+        filler_within,
         ..StepChoice::default()
     };
     let mut out = Vec::new();
     match game.quests[level].as_ref().expect("a real level") {
-        Quest::Relics { .. } => out.extend(FILLERS.map(|f| with(None, false, false, f))),
-        Quest::Each(_) => {
-            for p in EACH_PROFILES {
-                for s in [false, true] {
-                    out.extend(FILLERS.map(|f| with(Some(p), false, s, f)));
-                }
-            }
-        }
-        Quest::Total { .. } => {
-            for p in TOTAL_PROFILES {
-                for c in [false, true] {
-                    for s in [false, true] {
-                        out.extend(FILLERS.map(|f| with(Some(p), c, s, f)));
-                    }
-                }
+        Quest::Relics { .. } => out.extend(fillers.iter().map(|&f| with(None, f))),
+        Quest::Each(_) | Quest::Total { .. } => {
+            let profiles: &[Profile] = if matches!(game.quests[level], Some(Quest::Each(_))) { &EACH_PROFILES } else { &TOTAL_PROFILES };
+            for &p in profiles {
+                out.extend(fillers.iter().map(|&f| with(Some(p), f)));
             }
         }
     }
     out
 }
 
-/// The knobs a level has, for a descent that turns one knob at a time.
-pub fn knobs(game: &Game, level: usize) -> Vec<&'static str> {
-    let mut knobs = vec!["filler"];
+/// The knobs a level has on the way to `target`, for a descent that turns
+/// one knob at a time.
+pub fn knobs(game: &Game, level: usize, target: usize) -> Vec<&'static str> {
+    let mut knobs = vec!["filler", "window"];
     if game.next_named(level).is_some() {
         knobs.push("bank");
     }
     match game.quests[level] {
-        Some(Quest::Each(_)) => knobs.extend(["profile", "score"]),
-        Some(Quest::Total { .. }) => knobs.extend(["profile", "closer", "score"]),
+        Some(Quest::Each(_)) => knobs.push("profile"),
+        Some(Quest::Total { .. }) => knobs.extend(["profile", "trades"]),
         _ => {}
+    }
+    if game.horizon_for(level, target, true) != game.horizon_for(level, target, false) {
+        knobs.push("ahead");
     }
     knobs
 }
@@ -699,11 +727,16 @@ pub fn turn(game: &Game, level: usize, knob: &str, current: StepChoice) -> Vec<S
     };
     let both = [false, true];
     let values: Vec<StepChoice> = match knob {
-        "filler" => FILLERS.iter().map(|&f| StepChoice { filler: f, ..current }).collect(),
+        "filler" => both.iter().map(|&f| StepChoice { filler: f, ..current }).collect(),
+        // a window only matters with a filler to roll
+        "window" if !current.filler => Vec::new(),
+        "window" => FILLER_WINDOWS.iter().map(|&w| StepChoice { filler_within: w, ..current }).collect(),
         "bank" => both.iter().map(|&b| StepChoice { bank: b, ..current }).collect(),
+        "ahead" => both.iter().map(|&a| StepChoice { ahead: a, ..current }).collect(),
+        // a repair asks every relic for a step past where it is: nothing to trade
+        "trades" if current.profile == Some(Profile::Repair) => Vec::new(),
+        "trades" => both.iter().map(|&t| StepChoice { trades: t, ..current }).collect(),
         "profile" => profiles.iter().map(|&p| StepChoice { profile: Some(p), ..current }).collect(),
-        "closer" => both.iter().map(|&c| StepChoice { closer: c, ..current }).collect(),
-        "score" => both.iter().map(|&s| StepChoice { score: s, ..current }).collect(),
         other => unreachable!("no knob called {other}"),
     };
     values.into_iter().filter(|&v| v != current).collect()
@@ -721,11 +754,6 @@ pub fn target_cost(game: &Game, plan: &Plan, runs: u64, seed: u64, target: Targe
     Ok(*game.mean_costs(plan, runs, seed, &target.options())?.last().expect("at least level 1"))
 }
 
-/// Mean diamonds spent on the step from level - 1 to `level` alone.
-pub fn step_cost(game: &Game, plan: &Plan, level: usize, runs: u64, seed: u64) -> Result<f64, String> {
-    let costs = game.mean_costs(plan, runs, seed, &RunOptions::to(level))?;
-    Ok(costs[level - 1] - costs[level - 2])
-}
 
 /// How hard a search looks.
 #[derive(Clone, Copy, Debug)]
@@ -742,10 +770,6 @@ pub struct SearchOptions {
 }
 
 impl SearchOptions {
-    pub fn greedy() -> Self {
-        SearchOptions { runs: 10_000, final_runs: 50_000, seed: 777, max_level: MAX_LEVEL, tier: None }
-    }
-
     pub fn lookahead() -> Self {
         SearchOptions { runs: 10_000, final_runs: 50_000, seed: 4242, max_level: MAX_LEVEL, tier: None }
     }
@@ -760,81 +784,22 @@ impl SearchOptions {
     }
 }
 
-/// One level of a greedy search.
-#[derive(Clone, Debug)]
-pub struct GreedyRow {
-    pub level: usize,
-    pub choice: StepChoice,
-    pub cost: f64,
-    pub runner_up: Option<(StepChoice, f64)>,
-    /// what banking the next named relics would have cost this step
-    pub bank_cost: Option<f64>,
-}
-
 fn ranked(scores: Vec<(f64, usize)>) -> Vec<(f64, usize)> {
     let mut scores = scores;
     scores.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
     scores
 }
 
-/// Make each level as cheap as possible on its own, in order.
-///
-/// Level by level, every StepChoice is scored on the cost of that step alone,
-/// from the board the greedy choices so far leave behind, and the cheapest is
-/// locked in; what a choice does to later levels is ignored.  The closest
-/// three are re-run on more, fresh runs before one is picked, and every
-/// candidate sees the same luck, so the ranking is not a coin toss.
-pub fn greedy_search(
-    game: &Game,
-    o: SearchOptions,
-    log: &dyn Fn(&str),
-) -> Result<(Plan, Vec<GreedyRow>), String> {
-    let mut plan = Plan::default();
-    let mut report = Vec::new();
-    for level in 2..=o.max_level {
-        let choices = step_choices(game, level);
-        let score = |i: usize, runs, seed| step_cost(game, &plan.with(level, choices[i]), level, runs, seed);
-        let mut scored = ranked(
-            (0..choices.len()).map(|i| Ok((score(i, o.runs, o.seed)?, i))).collect::<Result<_, String>>()?,
-        );
-        if scored.len() > 1 {
-            scored = ranked(
-                scored
-                    .iter()
-                    .take(3)
-                    .map(|&(_, i)| Ok((score(i, o.final_runs, o.seed + 1)?, i)))
-                    .collect::<Result<_, String>>()?,
-            );
-        }
-        let (cost, best) = scored[0];
-        plan = plan.with(level, choices[best]);
-        let bank_cost = match game.quests[level] {
-            Some(Quest::Total { .. }) if game.future_named(level) != 0 => Some(step_cost(
-                game,
-                &plan.with(level, choices[best].bank()),
-                level,
-                o.final_runs,
-                o.seed + 1,
-            )?),
-            _ => None,
-        };
-        log(&format!("L{level}: {}  {}", choices[best].label(), crate::format::commas(cost, 0)));
-        report.push(GreedyRow {
-            level,
-            choice: choices[best],
-            cost,
-            runner_up: scored.get(1).map(|&(c, i)| (choices[i], c)),
-            bank_cost,
-        });
-    }
-    Ok((plan, report))
-}
-
 /// The cheapest plan to `max_level` (and its tier, if any) overall, by
-/// coordinate descent from
-/// `start`: every knob of every level is turned in turn, each value scored on
-/// the total cost, and a change is kept only if it still wins by 0.5% on a
-/// larger, fresh set of paired runs.  Stops when a sweep changes nothing.
+/// coordinate descent from `start`: every knob of every level is turned in
+/// turn, each value scored on the total cost, and a change is kept if it
+/// beats the plan on the screening runs and still beats it - by any margin -
+/// on a larger, fresh set of paired runs.  Stops when a sweep changes nothing
+/// (or after `SWEEPS`).
+///
+/// Every option for a level plays the levels below it exactly as the plan
+/// does, so those are simulated once per level (`Game::prefixes`) and each
+/// option is resumed from there - the same costs as whole runs, for less.
 pub fn lookahead_search(
     game: &Game,
     start: &Plan,
@@ -842,29 +807,44 @@ pub fn lookahead_search(
     log: &dyn Fn(&str),
 ) -> Result<(Plan, f64), String> {
     const SWEEPS: u64 = 4;
+    let options = o.target().options();
     let mut plan = start.clone();
     for sweep in 0..SWEEPS {
         let mut changed = false;
+        let check = o.seed + 1000 + sweep;
+        // the plan's cost on the confirming runs, while it stays the plan
+        let mut confirmed: Option<f64> = None;
         for level in 2..=o.max_level {
-            for knob in knobs(game, level) {
+            let screen = game.prefixes(&plan, o.runs, o.seed + sweep, &options, level - 1)?;
+            let mut current = game.mean_cost_from(&plan, &screen, &options)?;
+            let mut confirming: Option<Vec<sim::Partial>> = None;
+            for knob in knobs(game, level, o.max_level) {
                 let trials = turn(game, level, knob, plan.step(level));
+                if trials.is_empty() {
+                    continue; // nothing to turn it to (a window, with no filler)
+                }
                 let scored = ranked(
                     trials
                         .iter()
                         .enumerate()
-                        .map(|(i, &t)| {
-                            Ok((
-                                target_cost(game, &plan.with(level, t), o.runs, o.seed + sweep, o.target())?,
-                                i,
-                            ))
-                        })
+                        .map(|(i, &t)| Ok((game.mean_cost_from(&plan.with(level, t), &screen, &options)?, i)))
                         .collect::<Result<_, String>>()?,
                 );
-                let best = trials[scored[0].1];
-                let check = o.seed + 1000 + sweep;
-                let now = target_cost(game, &plan, o.final_runs, check, o.target())?;
-                let new = target_cost(game, &plan.with(level, best), o.final_runs, check, o.target())?;
-                if new < now * 0.995 {
+                let (screened, best) = (scored[0].0, trials[scored[0].1]);
+                if screened >= current {
+                    continue; // nothing beats the plan on the screening runs
+                }
+                if confirming.is_none() {
+                    confirming = Some(game.prefixes(&plan, o.final_runs, check, &options, level - 1)?);
+                }
+                let fresh = confirming.as_deref().expect("just made");
+                let now = match confirmed {
+                    Some(cost) => cost,
+                    None => game.mean_cost_from(&plan, fresh, &options)?,
+                };
+                let new = game.mean_cost_from(&plan.with(level, best), fresh, &options)?;
+                confirmed = Some(now);
+                if new < now {
                     log(&format!(
                         "sweep {sweep} L{level} {knob}: {} -> {}  {} -> {}",
                         plan.step(level).label(),
@@ -873,6 +853,7 @@ pub fn lookahead_search(
                         crate::format::commas(new, 0)
                     ));
                     plan = plan.with(level, best);
+                    (current, confirmed) = (screened, Some(new));
                     changed = true;
                 }
             }
@@ -886,25 +867,53 @@ pub fn lookahead_search(
 }
 
 /// A look-ahead search for every target in turn, each starting from whichever
-/// of the saved greedy and look-ahead plans reaches that target cheaper, and
-/// trimmed to the levels it plays.  `log` hears each target as it finishes.
+/// plan reaches that target cheapest - the named look-ahead plan, the plan
+/// saved for it, the plan just found for the target before it (a
+/// tier's neighbour shares nearly all of its plan), and `extra` - and trimmed
+/// to the levels it plays.  A start close to the answer leaves the descent
+/// little to do.  `log` hears each target as it finishes.
 pub fn lookahead_all(
     game: &Game,
     only: Option<&[Target]>,
+    extra: &[Plan],
     log: &dyn Fn(&str),
 ) -> Result<Vec<(Target, Plan, f64)>, String> {
-    let starts = [strategy("greedy").expect("a named plan"), strategy("lookahead").expect("a named plan")];
-    let mut out = Vec::new();
+    let named = [strategy("lookahead").expect("a named plan")];
+    let saved = lookahead_plans().unwrap_or_default();
+    let mut out: Vec<(Target, Plan, f64)> = Vec::new();
     for target in targets().into_iter().filter(|t| only.is_none_or(|o| o.contains(t))) {
         let o = SearchOptions::per_target(target);
+        let mut starts: Vec<&Plan> = named.iter().chain(extra).collect();
+        starts.extend(saved.iter().filter(|(t, _)| *t == target).map(|(_, p)| p));
+        starts.extend(out.last().map(|(_, p, _)| p));
+        // and each of those looking to the totals ahead wherever that differs
+        let ahead: Vec<Plan> = starts
+            .iter()
+            .map(|p| {
+                (2..=target.level)
+                    .filter(|&l| game.horizon_for(l, target.level, true) != game.horizon_for(l, target.level, false))
+                    .fold((*p).clone(), |plan, l| plan.with(l, StepChoice { ahead: true, ..p.step(l) }))
+            })
+            .collect();
+        starts.extend(ahead.iter());
+        // and each of those with trades counting as their bar on every bar level
+        let traded: Vec<Plan> = starts
+            .iter()
+            .map(|p| {
+                (2..=target.level)
+                    .filter(|&l| matches!(game.quests[l], Some(Quest::Total { .. })) && p.step(l).profile != Some(Profile::Repair))
+                    .fold((*p).clone(), |plan, l| plan.with(l, StepChoice { trades: true, ..p.step(l) }))
+            })
+            .collect();
+        starts.extend(traded.iter());
         let mut best: Option<(f64, &Plan)> = None;
-        for start in &starts {
+        for start in starts {
             let cost = target_cost(game, start, o.final_runs, o.seed + 3000, target)?;
             if best.is_none_or(|(c, _)| cost < c) {
                 best = Some((cost, start));
             }
         }
-        let start = best.expect("two starts").1.up_to(target.level);
+        let start = best.expect("the named starts").1.up_to(target.level);
         let (plan, cost) = lookahead_search(game, &start, o, &|_| {})?;
         let plan = plan.up_to(target.level);
         log(&format!("{}: {}  {}", target.code(), crate::format::commas(cost, 0), plan.code()));
@@ -943,6 +952,9 @@ pub struct Advice {
     /// the relics the level's quest work is on, each with the bar it is
     /// rolled toward (empty past the top, or once the quest is met)
     pub work: Vec<(usize, Bar)>,
+    /// the totals every attempt at this level closes the gap to
+    /// (`Game::horizon_for`, as the plan has it for the level)
+    pub horizon: sim::Horizon,
 }
 
 impl Advice {
@@ -960,11 +972,11 @@ impl Advice {
 
 impl Game {
     /// What `plan` does next toward `target` from a board seen at inheritor
-    /// `level`: `states` is every relic's (glory, despair) and `stock` how
-    /// many of each are on hand.  The same decisions the Monte Carlo makes,
-    /// bar two things a single board cannot show: the pity meter (it decides
-    /// when a level comes, never what is rolled) and how far earlier attempts
-    /// at this level pushed the bars (see `sim::next_move`).
+    /// `level`: `states` is every relic's (glory, despair), `stock` how many
+    /// of each are on hand and `pity` the pity points earned toward the next
+    /// level (None if not known: a filler that waits for the bar to be in
+    /// reach is then not rolled).  The same decisions the Monte Carlo makes:
+    /// it too works out each attempt from the board alone.
     pub fn advise(
         &self,
         plan: &Plan,
@@ -972,6 +984,7 @@ impl Game {
         level: usize,
         states: &[Relic],
         stock: &[u32],
+        pity: Option<u32>,
     ) -> Result<Advice, String> {
         let n = self.economy.relics;
         if states.len() != n || stock.len() != n {
@@ -983,13 +996,15 @@ impl Game {
         if level < target.level {
             let goal = level + 1;
             let quest = self.quests[goal].as_ref().ok_or(format!("no requirement for level {goal}"))?;
-            if quest.satisfied(states) {
-                return Ok(Advice { level, goal, next: Next::LevelUp, work: Vec::new() });
-            }
             let rules = plan.rules(self, goal);
-            let (next, work) = sim::next_move(quest, &rules, level, states, stock, self.economy.per_attempt)
+            let horizon = self.horizon_for(goal, target.level, rules.ahead);
+            if quest.satisfied(states) {
+                return Ok(Advice { level, goal, next: Next::LevelUp, work: Vec::new(), horizon });
+            }
+            let left = pity.map(|p| self.pity_needed[goal].saturating_sub(p).div_ceil(self.pity_gain[level]));
+            let (next, work) = sim::next_move(quest, &rules, level, states, stock, self.economy.per_attempt, left, horizon)
                 .ok_or(format!("stuck trying to reach level {goal}"))?;
-            return Ok(Advice { level, goal, next: Next::Move(next), work });
+            return Ok(Advice { level, goal, next: Next::Move(next), work, horizon });
         }
         // at the top: the crit relic farmed to the tier, as the runs do it
         let next = match target.tier {
@@ -1002,30 +1017,74 @@ impl Game {
                 if !lots.is_empty() {
                     Next::Convert(lots)
                 } else if stock[CRIT] >= self.economy.per_attempt {
-                    Next::Farm { key: TableKey::Reach { level: level as u8, mark } }
+                    Next::Farm { key: TableKey::above(level as u8, mark, states[CRIT]) }
                 } else {
                     Next::Move(Move::Summon)
                 }
             }
             _ => Next::Done,
         };
-        Ok(Advice { level, goal: level, next, work: Vec::new() })
+        Ok(Advice { level, goal: level, next, work: Vec::new(), horizon: self.horizon(target.level) })
     }
 
     /// Whether the roll `advice` makes keeps `new` on the relic it rolls;
     /// None if it is not a roll.
     pub fn keeps(&self, advice: &Advice, states: &[Relic], new: Relic) -> Option<bool> {
-        let quest = || self.quests[advice.goal].as_ref().expect("advice is for a real level");
         match advice.next {
-            Next::Move(Move::Quest { relic, bar, closer, .. }) => {
-                Some(sim::keeps(quest(), closer, states, relic, new, bar))
+            Next::Move(Move::Quest { relic, bar, .. } | Move::Filler { relic, bar, .. }) => {
+                let quest = self.quests[advice.goal].as_ref().expect("advice is for a real level");
+                Some(sim::keeps(quest, advice.horizon, states, relic, new, bar))
             }
-            Next::Move(Move::Filler { relic, bar, .. }) => {
-                Some(sim::filler_keeps(quest(), states, relic, new, bar))
-            }
-            Next::Farm { .. } => Some(amplification(new) > amplification(states[CRIT])),
+            Next::Farm { .. } => Some(self.keeps_farmed(states, new)),
             _ => None,
         }
+    }
+
+    /// Whether a roll on `relic` toward `bar`, for the quest of level `goal`
+    /// and closing the gap to the totals `horizon` (a quest roll or a filler
+    /// alike, as the advice had them), keeps `new`: it ranks above the
+    /// memory in place (its bar newly met, the board nearer those totals,
+    /// more glory less despair).  What the roll was is all it takes - not the
+    /// plan, nor the pity.
+    pub fn keeps_roll(&self, horizon: sim::Horizon, goal: usize, relic: usize, bar: Bar, states: &[Relic], new: Relic) -> bool {
+        let quest = self.quests[goal].as_ref().expect("a real level");
+        sim::keeps(quest, horizon, states, relic, new, bar)
+    }
+
+    /// The totals of level `level`, or of the last level before it that asks
+    /// for totals.
+    pub fn horizon(&self, level: usize) -> sim::Horizon {
+        (2..=level.min(self.max_level())).rev().find_map(|l| match self.quests[l] {
+            Some(Quest::Total { glory, despair }) => Some((glory, despair)),
+            _ => None,
+        })
+    }
+
+    /// The totals the work for level `goal` closes the gap to, on the way to
+    /// `target`: a totals level's own (a level naming its relics: the
+    /// target's totals), or, `ahead`, the totals ahead - the most glory and
+    /// the least despair any totals level from `goal` to `target` asks, so
+    /// a tighter despair cap on the way counts.  However little the level
+    /// asks itself: 9/0 beats a 9/1 that clears it, and the tie-break weighs
+    /// glory against despair as these totals still need them.  Which is
+    /// cheaper is the plan's call, level by level ("a").
+    pub fn horizon_for(&self, goal: usize, target: usize, ahead: bool) -> sim::Horizon {
+        if ahead {
+            let totals = (goal..=target.min(self.max_level())).filter_map(|l| match self.quests[l] {
+                Some(Quest::Total { glory, despair }) => Some((glory, despair)),
+                _ => None,
+            });
+            return totals.reduce(|(g, d), (g2, d2)| (g.max(g2), d.min(d2))).or_else(|| self.horizon(target));
+        }
+        match self.quests.get(goal) {
+            Some(Some(Quest::Total { glory, despair })) => Some((*glory, *despair)),
+            _ => self.horizon(target),
+        }
+    }
+
+    /// Whether a crit relic farm roll keeps `new`: more amplification.
+    pub fn keeps_farmed(&self, states: &[Relic], new: Relic) -> bool {
+        amplification(new) > amplification(states[CRIT])
     }
 }
 

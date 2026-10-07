@@ -116,16 +116,17 @@ function plan({ relic = 11, up = 18 } = {}) {
       if (despair <= up) return { step: 'levelup', goal: level + 1 };
       const pick = typeof relic === 'function' ? relic(states, stock) : relic;
       if (pick === null) return { step: 'summon', goal: level + 1 };
-      return { step: 'quest', goal: level + 1, relic: pick, solveLevel: level, objective: { kind: 'target', glory: 8, despair: 2 }, bar: { glory: 8, despair: 2 }, closer: true };
+      return { step: 'quest', goal: level + 1, relic: pick, solveLevel: level, objective: { kind: 'target', glory: 8, despair: 2 }, bar: { glory: 8, despair: 2 } };
     },
-    keeps(goal, level, states, stock, fresh) {
+    keepsRoll(roll, states, fresh) {
       return fresh.glory >= 8 && fresh.despair <= 2;
     },
   };
 }
 
-function setup(game, { attempts = 20, advice = plan(), saved = null, level = 18, objective = { kind: 'max' } } = {}) {
+function setup(game, { attempts = 20, advice = plan(), saved = null, level = 18, objective = { kind: 'max' }, goal = { level: 20, tier: 46 } } = {}) {
   const logs = [];
+  const used = [];
   const store = { attempt: saved };
   const configured = [];
   const solver = {
@@ -135,19 +136,20 @@ function setup(game, { attempts = 20, advice = plan(), saved = null, level = 18,
     expected: () => 0,
     finishChance: () => 1,
     advise: (...a) => advice.advise(...a),
-    keeps: (...a) => advice.keeps(...a),
+    keepsRoll: (...a) => advice.keepsRoll(...a),
     pityGain: () => 180,
     pityNeeded: () => 9000,
   };
   const runner = new Advisor({
     tab: { capture: async () => ({ img: null, ratio: 1, png: '' }), click: async (x, y) => game.click(x, y) },
     solver,
-    settings: { mode: 'advisor', goal: { level: 20, tier: 46 }, level, objective, attempts, clickMethod: 'mouse' },
+    settings: { mode: 'advisor', goal, level, objective, attempts },
     ui: {
       log: (text, lv) => logs.push({ text, level: lv }), show() {}, askTier: async () => null,
+      useSettings: (s) => used.push(s),
       saveAttempt: async (record) => (store.attempt = record), loadAttempt: async () => store.attempt,
     },
-    timing: { poll: 0, settle: 0, gap: [0, 0] },
+    timing: { poll: 0, settle: 0, gap: [0, 0], retry: 30 },
     see: (img, lastAnchor, anywhere, popup) => {
       const s = game.screen();
       return s.kind === 'compare' && !(lastAnchor && popup === 'compare') ? { kind: 'unknown', anchor: null } : s;
@@ -155,7 +157,7 @@ function setup(game, { attempts = 20, advice = plan(), saved = null, level = 18,
     read: (screen) => (screen.rateTier == null ? null : { tier: screen.rateTier }),
   });
   const text = () => logs.map((l) => l.text).join('\n');
-  return { runner, logs, text, configured, advice, store, last: () => logs[logs.length - 1] };
+  return { runner, logs, text, configured, advice, store, used, last: () => logs[logs.length - 1] };
 }
 
 test('advisor: reads the main page, every stock, then works the relic the plan picks', async () => {
@@ -165,11 +167,21 @@ test('advisor: reads the main page, every stock, then works the relic the plan p
   assert.match(text(), /Main page: inheritor level 18, pity 52%/);
   // every relic visited for its stock, in order, then Mountain Crown worked
   for (const [i, name] of RELICS.entries()) assert.match(text(), new RegExp(`${name.replace(/'/g, "'")}: ${BOARD[i][0]} glory, ${BOARD[i][1]} despair, ${STOCK[i]} on hand`));
-  assert.match(text(), /Advisor: Crown of the Great Mountain \(27 on hand\), for level 19 toward 8\/2 - played all or nothing for 8\+ glory with 2 or less despair, keeping any roll that closes the gap/);
+  assert.match(text(), /Advisor: Crown of the Great Mountain \(27 on hand\), for level 19 toward 8\/2 - Maximize glory, minimize despair above a target \(Glory Target 8, Despair Target 2\), keeping a roll that does better/);
   // the attempt is solved for the plan's objective, at the level read
   assert.deepStrictEqual(configured[configured.length - 1], { level: 18, objective: { kind: 'target', glory: 8, despair: 2 } });
   assert.strictEqual(game.attempts, 2);
   assert.match(last().text, /Done: 2 attempt\(s\)/);
+});
+
+test('advisor: each attempt it starts sets the One relic settings to its level and objective', async () => {
+  const game = new Game({ board: BOARD, stock: STOCK, pity: 4680 });
+  const { runner, used } = setup(game, { attempts: 2 });
+  await runner.run();
+  assert.deepStrictEqual(used, [
+    { level: 18, objective: { kind: 'target', glory: 8, despair: 2 } },
+    { level: 18, objective: { kind: 'target', glory: 8, despair: 2 } },
+  ]);
 });
 
 test('advisor: the plan\'s keep rule decides, and a kept result does not stop it', async () => {
@@ -194,6 +206,14 @@ test('advisor: when the plan moves on, back to the main page and re-read', async
   assert.match(text(), /Advisor: Oath of Immortality/);
   assert.deepStrictEqual(game.board[11], [8, 2]);
   assert.deepStrictEqual(game.board[2], [8, 2]);
+});
+
+test('advisor: a goal already passed stops it, saying so', async () => {
+  const game = new Game({ board: BOARD, stock: STOCK, badges: (i, n) => n });
+  const { runner, last } = setup(game, { goal: { level: 12, tier: 0 } });
+  await runner.run();
+  assert.match(last().text, /Inheritor level 18 is past the goal \(level 12\) - pick a higher goal/);
+  assert.strictEqual(game.attempts, 0);
 });
 
 test('advisor: a met requirement stops it for the level-up', async () => {
@@ -326,12 +346,12 @@ test('advisor: an attempt it started and was stopped in is finished the way it b
   const game = new Game({ board: BOARD, stock: STOCK, screen: 'board', roll: () => ({ glory: 7, despair: 1 }) });
   game.at = 2;
   const saved = {
-    at: Date.now(), goal: { level: 20, tier: 46 }, level: 18, relic: 2, objective: { kind: 'target', glory: 8, despair: 2 },
+    at: Date.now(), goal: { level: 20, tier: 46 }, level: 18, relic: 2, objective: { kind: 'target', glory: 8, despair: 2 }, roll: { horizon: { glory: 94, despair: 19 }, goal: 19, relic: 2, bar: { glory: 8, despair: 2 }, farm: false },
     states: BOARD, stock: STOCK, pity: 0.52,
   };
   const { runner, text, configured, store } = setup(game, { attempts: 1, saved });
   await runner.run();
-  assert.match(text(), /Finishing the Oath of Immortality attempt the advisor started: all or nothing for 8\+ glory with 2 or less despair/);
+  assert.match(text(), /Finishing the Oath of Immortality attempt the advisor started: Maximize glory, minimize despair above a target \(Glory Target 8, Despair Target 2\)/);
   assert.deepStrictEqual(configured[0], { level: 18, objective: { kind: 'target', glory: 8, despair: 2 } });
   // the plan's keep rule (8+/2- in this test's plan): 7/1 is not kept
   assert.match(text(), /Results: new 7 glory, 1 despair .* - Keep Current Effect/);
@@ -344,7 +364,7 @@ test('advisor: an attempt it did not start is finished by the One relic settings
   game.at = 5;
   const { runner, text, configured } = setup(game, { attempts: 2, level: 18, objective: { kind: 'max' } });
   await runner.run();
-  assert.match(text(), /Finishing the attempt in progress by the One relic settings: level 18, the most amplification/);
+  assert.match(text(), /Finishing the attempt in progress by the One relic settings: level 18, Maximize amplification above a target \(no Minimum Useful Amplification: beat the memory\)/);
   assert.deepStrictEqual(configured[0], { level: 18, objective: { kind: 'max' } });
   assert.match(text(), /Results: new 9 glory, 0 despair .* - Replace with New Effect/);
   // then the advisor proper: the main page, the plan, its next attempt
@@ -356,7 +376,7 @@ test('advisor: an attempt it did not start is finished by the One relic settings
 test('advisor: a stale saved attempt is not trusted', async () => {
   const game = new Game({ board: BOARD, stock: STOCK, screen: 'board' });
   game.at = 2;
-  const saved = { at: Date.now() - 2 * 60 * 60 * 1000, goal: { level: 20, tier: 46 }, level: 18, relic: 2, objective: { kind: 'target', glory: 8, despair: 2 }, states: BOARD, stock: STOCK, pity: 0.5 };
+  const saved = { at: Date.now() - 2 * 60 * 60 * 1000, goal: { level: 20, tier: 46 }, level: 18, relic: 2, objective: { kind: 'target', glory: 8, despair: 2 }, roll: { horizon: { glory: 94, despair: 19 }, goal: 19, relic: 2, bar: { glory: 8, despair: 2 }, farm: false }, states: BOARD, stock: STOCK, pity: 0.5 };
   const { runner, text } = setup(game, { attempts: 1, saved });
   await runner.run();
   assert.match(text(), /by the One relic settings/);
@@ -387,11 +407,11 @@ test('advisor: a resumed attempt that can no longer be kept is abandoned at once
     else click(x, y);
   };
   const saved = {
-    at: Date.now(), goal: { level: 20, tier: 46 }, level: 18, relic: 9, objective: { kind: 'target', glory: 8, despair: 2 },
+    at: Date.now(), goal: { level: 20, tier: 46 }, level: 18, relic: 9, objective: { kind: 'target', glory: 8, despair: 2 }, roll: { horizon: { glory: 94, despair: 19 }, goal: 19, relic: 9, bar: { glory: 8, despair: 2 }, farm: false },
     states: BOARD, stock: STOCK, pity: 0.5,
   };
   const { runner, text } = setup(game, { attempts: 1, saved, advice: plan({ relic: 9 }) });
-  runner.solver.keeps = (goal, level, states, stock, fresh) => fresh.glory >= 8 && fresh.despair <= 2;
+  runner.solver.keepsRoll = (roll, states, fresh) => fresh.glory >= 8 && fresh.despair <= 2;
   await runner.run();
   assert.match(text(), /Nothing useful left in this attempt: even the best result still possible \(7 glory, 1 despair/);
   assert.match(text(), /Abandoned - the applied memory is unchanged \(9 glory, 1 despair/);
@@ -399,8 +419,8 @@ test('advisor: a resumed attempt that can no longer be kept is abandoned at once
 
 test('advisor: a pity filler says so, loudly, when it starts', async () => {
   const filler = {
-    advise: (goal, level) => ({ step: 'filler', goal: level + 1, relic: 0, solveLevel: level, objective: { kind: 'score', wGlory: 1, wDespair: 1 }, bar: { glory: 4, despair: 2 }, closer: false }),
-    keeps: () => false,
+    advise: (goal, level) => ({ step: 'filler', goal: level + 1, relic: 0, solveLevel: level, objective: { kind: 'close', glory: 9, despair: 0 }, bar: { glory: 4, despair: 2 }, closer: false }),
+    keepsRoll: () => false,
   };
   const game = new Game({ board: BOARD, stock: STOCK, badges: (i, n) => n, roll: () => ({ glory: 6, despair: 3 }) });
   const { runner, logs } = setup(game, { attempts: 1, advice: filler });
@@ -410,4 +430,22 @@ test('advisor: a pity filler says so, loudly, when it starts', async () => {
   assert.match(line.text, /nothing the level 19 work needs has 10 on hand, so Giant's Right Hand \(207 on hand\) is rolled just for the pity \(\+180 an attempt\)/);
   assert.strictEqual(line.level, 'warn');
   assert.ok(logs.some((l) => /Clicking Inheritance \(attempt 1 of 1; PITY FILLER, /.test(l.text)));
+});
+
+test('advisor: a relic tile click that does not land is clicked again', async () => {
+  const game = new Game({ board: BOARD, stock: STOCK, pity: 4680, badges: (i, n) => n });
+  const click = game.click.bind(game);
+  let dropped = false;
+  game.click = (x, y) => {
+    if (!dropped && TILES.some((t) => near(t, x, y))) {
+      dropped = true; // the main page does not take it
+      game.clicks.push({ x, y });
+      return;
+    }
+    click(x, y);
+  };
+  const { runner, text } = setup(game, { attempts: 1 });
+  await runner.run();
+  assert.match(text(), /Crown of the Great Mountain did not respond in \d+ s - clicking it again \(2 of 3\)/);
+  assert.strictEqual(game.attempts, 1);
 });

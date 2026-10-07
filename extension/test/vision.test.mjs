@@ -323,7 +323,8 @@ test('Hero\'s Legacy: every stock read, digits run together or not', () => {
   for (const [name, stock, memory] of [
     ['legacy-giant', 207, [7, 1]], ['legacy-oath', 135, [8, 3]], ['legacy-star', 28, [7, 1]],
     ['legacy-seal', 156, [8, 2]], ['legacy-mermaid', 180, [9, 1]], ['legacy-sky', 4, [7, 2]],
-    ['legacy-giant-167', 167, [7, 1]],
+    ['legacy-giant-167', 167, [7, 1]], ['legacy-seal-116', 116, [8, 2]],
+    ['legacy-seal-86-sd', 86, [8, 2]],
   ]) {
     const screen = classify(shot(name));
     assert.strictEqual(screen.kind, 'legacy', name);

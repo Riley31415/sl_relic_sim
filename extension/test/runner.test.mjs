@@ -152,17 +152,18 @@ function fakeSolver(game) {
   };
 }
 
-function setup({ game, attempts = 3, level = 18, answers = [], clickDelay, timing = { poll: 0, settle: 0, gap: [0, 0] } }) {
+function setup({ game, attempts = 3, level = 18, answers = [], clickDelay, timing = { poll: 0, settle: 0, gap: [0, 0], retry: 30 } }) {
   const logs = [];
   const asked = [];
   const solver = fakeSolver(game);
   const runner = new Runner({
     tab: { capture: async () => ({ img: null, ratio: 1, png: '' }), click: async (x, y) => game.click(x, y) },
     solver,
-    settings: { level, objective: { kind: 'max' }, attempts, clickMethod: 'mouse', clickDelay },
+    settings: { level, objective: { kind: 'max' }, attempts, clickDelay },
     ui: {
       log: (text, level) => logs.push({ text, level }),
       show() {},
+      saveFrame: async () => 'relic-unknown-test.png',
       askTier: async (c) => {
         asked.push(c);
         return answers.shift() ?? null;
@@ -173,6 +174,10 @@ function setup({ game, attempts = 3, level = 18, answers = [], clickDelay, timin
     // the last anchor (or anywhere, if its cards both read), the abandon
     // confirmation only after Abandon Inheritance
     see: (img, lastAnchor, anywhere, popup) => {
+      if (game.glitch > 0) {
+        game.glitch--;
+        return { kind: 'unknown', anchor: null };
+      }
       const screen = game.screen();
       const unknown = { kind: 'unknown', anchor: null };
       if (screen.kind === 'compare') {
@@ -483,9 +488,7 @@ function laggy(game, delay, count) {
 }
 
 function quickWaits(runner) {
-  const waitFor = runner.waitFor.bind(runner);
-  runner.waitFor = (test, ms) => waitFor(test, ms === 9000 ? 60 : ms);
-  runner.timing = { poll: 5, settle: 0, gap: [0, 0] };
+  runner.timing = { poll: 5, settle: 0, gap: [0, 0], retry: 60 };
 }
 
 test('a missed click is tried once more', async () => {
@@ -525,15 +528,15 @@ test('the click delay setting spaces clicks +/- 0.1 s around it', async () => {
 });
 
 test('a settled target is said once, and left to the solver', async () => {
-  // one glory slot left; the box can no longer be hit (the solver's
-  // tie-break then plays for amplification - tests/solver.rs)
+  // one glory slot left; nothing more of the gap can be closed (the
+  // solver's tie-break then plays for amplification - tests/solver.rs)
   const game = new FakeGame({ roll: lucky, current: { glory: 9, despair: 9 }, screen: 'board' });
   game.st = { gf: 7, gs: 4, df: 9, ds: 3, ms: 3, sp: 4 };
   game.tier = 3;
   const configured = [];
   const solver = {
     board: boardFor,
-    configure: (level, objective) => configured.push(objective.kind),
+    configure: (level, objective, from) => configured.push({ kind: objective.kind, from }),
     best: (st) => (st.gf === 9 && st.df === 9 ? 'done' : 'glory'),
     expected: () => 0,
     finishChance: () => 1,
@@ -549,9 +552,21 @@ test('a settled target is said once, and left to the solver', async () => {
     read: (screen) => (screen.rateTier == null ? null : { tier: screen.rateTier }),
   });
   await runner.run();
-  const said = logs.filter((l) => /The target is out of reach for this attempt - playing the rest of it for the result nearest to it still possible/.test(l));
+  const said = logs.filter((l) => /The target \(Glory Target 8, Despair Target 2\) is out of reach this attempt - playing the rest of it for more glory, less despair/.test(l));
   assert.strictEqual(said.length, 1); // two moves played, said once
-  assert.deepStrictEqual(configured, ['target']); // never reconfigured
+  // the same target throughout, closed from the memory in place (none read: started on the board)
+  assert.ok(configured.every((c) => c.kind === 'target' && c.from === null), JSON.stringify(configured));
+});
+
+test('a target is played to close the gap from the memory in place', async () => {
+  const game = new FakeGame({ roll: lucky, current: { glory: 7, despair: 3 } });
+  const configured = [];
+  const { runner } = setup({ game, attempts: 1 });
+  runner.solver.configure = (level, objective, from) => configured.push(from);
+  runner.useLevel(18, { kind: 'target', glory: 7, despair: 1 });
+  quickWaits(runner);
+  await runner.run();
+  assert.deepStrictEqual(configured.at(-1), { glory: 7, despair: 3 });
 });
 
 test('an attempt nothing useful can come of is abandoned at once', async () => {
@@ -582,4 +597,68 @@ test('while a better result is still possible, the attempt is played', async () 
   await runner.run();
   assert.doesNotMatch(text(), /Nothing useful left/);
   assert.match(text(), /Found a better memory and applied it: 9 glory, 0 despair/);
+});
+
+test('an Inheritance click the game did not take is clicked again', async () => {
+  const game = new FakeGame({ roll: lucky, current: { glory: 5, despair: 3 } });
+  laggy(game, Infinity, 1); // the first click (Inheritance) never arrives
+  const { runner, text } = setup({ game, attempts: 1 });
+  quickWaits(runner);
+  await runner.run();
+  assert.match(text(), /Inheritance did not respond in \d+ s - clicking it again \(2 of 3\)/);
+  assert.match(text(), /Attempt finished/);
+});
+
+test('a click that leads somewhere unexpected is not clicked again', async () => {
+  const game = new FakeGame({ roll: lucky, current: { glory: 5, despair: 3 } });
+  const click = game.click.bind(game);
+  game.click = (x, y) => {
+    click(x, y);
+    game.kind = 'nowhere'; // a screen nobody knows
+  };
+  const { runner, last } = setup({ game, attempts: 1 });
+  quickWaits(runner);
+  await runner.run();
+  assert.strictEqual(game.clicks.length, 1);
+  assert.match(last().text, /Waited for the attempt to start .* never came/);
+});
+
+test('an unrecognised screen that clears is waited out, without clicking', async () => {
+  const game = new FakeGame({ roll: lucky, current: { glory: 5, despair: 3 }, screen: 'board' });
+  game.glitch = 4; // a few frames that do not read (a stream hiccup)
+  const { runner, text } = setup({ game, attempts: 1 });
+  quickWaits(runner);
+  await runner.run();
+  assert.match(text(), /Not on a screen I recognise - waiting up to \d+ s for it to clear, without clicking/);
+  assert.match(text(), /It cleared \(a board with .*\) - carrying on/);
+  assert.match(text(), /Attempt finished/);
+});
+
+test('an unrecognised screen that stays stops the run, the frame saved', async () => {
+  const game = new FakeGame({ roll: lucky, current: { glory: 5, despair: 3 }, screen: 'board' });
+  game.glitch = Infinity;
+  const { runner, last } = setup({ game, attempts: 1 });
+  quickWaits(runner);
+  await runner.run();
+  assert.strictEqual(game.clicks.length, 0);
+  assert.match(last().text, /Not on a screen I recognise - stopped without clicking\. What I saw is saved as relic-unknown-test\.png/);
+});
+
+test('a click is given 10x the click delay to show its effect', () => {
+  const game = new FakeGame({ roll: lucky, current: { glory: 5, despair: 3 } });
+  const { runner } = setup({ game, clickDelay: 1.5, timing: { poll: 250, settle: 900, gap: [1400, 1600] } });
+  assert.strictEqual(runner.timing.retry, 15000);
+  assert.deepStrictEqual(runner.timing.gap, [1400, 1600]);
+});
+
+test('above a mark: when the mark slips out of reach, it says what it aims for now', async () => {
+  // level 18 (9 slots), 40% or more: 6 glory with one glory slot left can end at best on 8/1 (38%)
+  const game = new FakeGame({ roll: lucky, current: { glory: 9, despair: 9 }, screen: 'board' });
+  game.st = { gf: 7, gs: 6, df: 9, ds: 1, ms: 3, sp: 4 };
+  game.tier = 3;
+  const { runner, text } = setup({ game, attempts: 1 });
+  runner.useLevel(18, { kind: 'max', mark: 40 });
+  quickWaits(runner);
+  await runner.run();
+  assert.match(text(), /The \+40% Minimum Useful Amplification is out of reach this attempt - aiming for \+38% now, the highest still possible/);
 });

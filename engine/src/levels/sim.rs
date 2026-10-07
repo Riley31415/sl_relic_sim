@@ -4,7 +4,7 @@
 
 use super::amplification;
 use super::rules::{Bar, LevelRules, Quest, Relic, contains, totals};
-use super::tables::{LocalTables, Table, TableKey, hit_chance};
+use super::tables::{LocalTables, Table, TableKey, expected_closing};
 use crate::rng::Rng;
 use crate::solver::{Config, Strategy};
 
@@ -99,9 +99,21 @@ impl Player<'_> {
         self.stock[relic] >= self.economy.per_attempt
     }
 
-    /// What the plan does next, given the work `work` set out.
-    fn choose(&self, quest: &Quest, rules: &LevelRules, level: usize, profiles: &[(usize, Bar)], todo: &[usize]) -> Move {
-        choose(quest, rules, level, profiles, todo, &self.stock, self.economy.per_attempt)
+    /// What the plan does next, given the work `work` set out, the
+    /// attempts still needed to fill the pity bar and the goal's totals.
+    #[allow(clippy::too_many_arguments)]
+    fn choose(
+        &self,
+        quest: &Quest,
+        rules: &LevelRules,
+        level: usize,
+        profiles: &[(usize, Bar)],
+        todo: &[usize],
+        pity_left: Option<u32>,
+        horizon: Horizon,
+    ) -> Move {
+        let ctx = Context { quest, rules, level, horizon };
+        choose(&ctx, profiles, todo, &self.states, &self.stock, self.economy.per_attempt, pity_left)
     }
 
     /// Spend one attempt's worth of `relic` and roll it.
@@ -142,49 +154,85 @@ pub fn run(
     tables: &mut LocalTables,
     rng: Rng,
 ) -> Result<Run, String> {
-    let n = game.economy.relics;
-    let mut player = Player {
+    let mut partial = start(game, options, tracked, rng);
+    climb(game, rules, options, tracked, tables, &mut partial, options.max_level)?;
+    Ok(finish(options, tracked, tables, partial))
+}
+
+/// A run part-way through: the player as it stands on reaching level
+/// `levels.len()`, and a LevelUp for every level so far.  Resuming it plays
+/// on exactly as the run would have (its luck is in the player), so runs that
+/// share every level's rules below some level can share that much of the
+/// work.
+#[derive(Clone)]
+pub struct Partial<'a> {
+    player: Player<'a>,
+    levels: Vec<LevelUp>,
+}
+
+impl Partial<'_> {
+    /// The level reached so far.
+    pub fn level(&self) -> usize {
+        self.levels.len()
+    }
+}
+
+/// A run at level 1, nothing spent.
+pub fn start<'a>(game: &'a Game, options: &RunOptions, tracked: (usize, usize), rng: Rng) -> Partial<'a> {
+    let player = Player {
         economy: &game.economy,
-        states: vec![(0, 0); n],
+        states: vec![(0, 0); game.economy.relics],
         stock: options.start_stock.clone(),
         summons: 0,
         attempts: 0,
         rng,
     };
-    let mut levels = vec![player.level_up(false, tracked.0, tracked.1)];
+    let levels = vec![player.level_up(false, tracked.0, tracked.1)];
+    Partial { player, levels }
+}
+
+/// Play `partial` on under `rules` until it reaches level `until` (no
+/// further than `options.max_level`).
+pub fn climb(
+    game: &Game,
+    rules: &[Option<LevelRules>],
+    options: &RunOptions,
+    tracked: (usize, usize),
+    tables: &mut LocalTables,
+    partial: &mut Partial,
+    until: usize,
+) -> Result<(), String> {
+    let Partial { player, levels } = partial;
+    let n = game.economy.relics;
     let mut profiles: Vec<(usize, Bar)> = Vec::with_capacity(n);
     let mut todo: Vec<usize> = Vec::with_capacity(n);
 
-    for level in 1..options.max_level {
+    for level in levels.len()..until.min(options.max_level) {
         let goal = level + 1;
         let quest = game.quests[goal].as_ref().ok_or(format!("no requirement for level {goal}"))?;
         let rules = rules[goal].as_ref().ok_or(format!("no plan for level {goal}"))?;
+        let horizon = game.horizon_for(goal, options.max_level, rules.ahead);
         let full = if options.pity { game.pity_needed[goal] } else { u32::MAX };
         let gain = game.pity_gain[level];
-        let (mut meter, mut escalation) = (0u32, 0u32);
+        let mut meter = 0u32;
 
         while meter < full && !quest.satisfied(&player.states) {
-            if !work(quest, rules, &player.states, slots_at(level), &mut escalation, &mut profiles, &mut todo) {
+            if !work(quest, rules, &player.states, slots_at(level), horizon, &mut profiles, &mut todo) {
                 return Err(format!("stuck trying to reach level {goal}"));
             }
             // summon until something is worth attempting
+            let pity_left = options.pity.then(|| (full - meter).div_ceil(gain));
             let next = loop {
-                match player.choose(quest, rules, level, &profiles, &todo) {
+                match player.choose(quest, rules, level, &profiles, &todo, pity_left, horizon) {
                     Move::Summon => player.summon(),
                     roll => break roll,
                 }
             };
             meter += gain;
             match next {
-                Move::Filler { relic, bar, key } => {
+                Move::Quest { relic, bar, key } | Move::Filler { relic, bar, key } => {
                     let rolled = player.attempt(relic, tables.get(key));
-                    if filler_keeps(quest, &player.states, relic, rolled, bar) {
-                        player.states[relic] = rolled;
-                    }
-                }
-                Move::Quest { relic, bar, key, closer } => {
-                    let rolled = player.attempt(relic, tables.get(key));
-                    if keeps(quest, closer, &player.states, relic, rolled, bar) {
+                    if keeps(quest, horizon, &player.states, relic, rolled, bar) {
                         player.states[relic] = rolled;
                     }
                 }
@@ -193,28 +241,39 @@ pub fn run(
         }
         levels.push(player.level_up(!quest.satisfied(&player.states), tracked.0, tracked.1));
     }
+    Ok(())
+}
 
-    // a run that goes on to the tiers first spends what the climb left over:
-    // everything converted into crit relics and attempted for the first tier,
-    // without summoning more
+/// A run at the top (see `climb`) to its end: the crit relic farmed to each
+/// of `options.tiers`.
+pub fn finish(options: &RunOptions, tracked: (usize, usize), tables: &mut LocalTables, partial: Partial) -> Run {
+    let Partial { player, mut levels } = partial;
     let crit = tracked.1;
-    if let (Some(&first), Some(top)) = (options.tiers.first(), levels.last_mut()) {
-        let key = TableKey::Reach { level: options.max_level as u8, mark: first };
-        player.convert(crit);
-        while player.affordable(crit) {
-            let rolled = player.attempt(crit, tables.get(key));
-            if amplification(rolled) > amplification(player.states[crit]) {
-                player.states[crit] = rolled;
+    let mut board = player.states.clone();
+    // the top level's own row: what the climb left over converted into crit
+    // relics and spent on the crit relic, without summoning more, every
+    // attempt for the most amplification above what it has
+    if options.max_level == super::MAX_LEVEL
+        && let Some(top) = levels.last_mut()
+    {
+        let best = 5.0 * f64::from(slots_at(options.max_level));
+        let mut spent = player.clone();
+        spent.convert(crit);
+        while spent.affordable(crit) && amplification(spent.states[crit]) < best {
+            let key = TableKey::above(options.max_level as u8, 0, spent.states[crit]);
+            let rolled = spent.attempt(crit, tables.get(key));
+            if amplification(rolled) > amplification(spent.states[crit]) {
+                spent.states[crit] = rolled;
             }
         }
-        *top = player.level_up(top.by_pity, tracked.0, tracked.1);
+        *top = spent.level_up(top.by_pity, tracked.0, tracked.1);
+        board = spent.states;
     }
 
-    // the tiers: each its own farm from the same top-level player, everything
-    // converted into the crit relic and every attempt played for that tier's
-    // mark, the best result kept
+    // the tiers: each its own farm from the moment the top level is reached,
+    // the leftovers and everything after converted into the crit relic and
+    // every attempt played for that tier's mark, the best result kept
     for &mark in &options.tiers {
-        let key = TableKey::Reach { level: options.max_level as u8, mark };
         let mut farm = player.clone();
         while amplification(farm.states[crit]) < f64::from(mark) {
             farm.convert(crit);
@@ -222,6 +281,7 @@ pub fn run(
                 farm.summon();
                 continue;
             }
+            let key = TableKey::above(options.max_level as u8, mark, farm.states[crit]);
             let rolled = farm.attempt(crit, tables.get(key));
             if amplification(rolled) > amplification(farm.states[crit]) {
                 farm.states[crit] = rolled;
@@ -229,7 +289,7 @@ pub fn run(
         }
         levels.push(farm.level_up(false, tracked.0, tracked.1));
     }
-    Ok(Run { levels, board: player.states })
+    Run { levels, board }
 }
 
 /// What a plan does next at one level.
@@ -238,38 +298,55 @@ pub enum Move {
     /// nothing the quest needs, and no spare relic for a filler, is affordable
     Summon,
     /// nothing the quest needs is affordable: a spare relic rolled for the
-    /// pity, kept only if it moves toward `bar` without setting the quest back
+    /// pity (earned whatever the roll), played and kept as a quest roll -
+    /// `bar` its own bar if the quest has one for it (none: kept only if
+    /// better on both bars, or on a total if it narrows the gap to its totals)
     Filler { relic: usize, bar: Bar, key: TableKey },
-    /// a relic the quest needs, rolled toward `bar` and played per `key`; with
-    /// `closer`, any roll that narrows a total's gap is kept as well
-    Quest { relic: usize, bar: Bar, key: TableKey, closer: bool },
+    /// a relic the quest needs, rolled toward `bar` and played per `key`,
+    /// closing the quest's gap; kept if it narrows it (see `keeps`)
+    Quest { relic: usize, bar: Bar, key: TableKey },
 }
 
 /// The work this level asks for: the bar each relic is rolled toward, in
-/// `profiles`, and the relics still short of theirs, in `todo`.  When
-/// nothing is short the bars are pushed further, and `escalation` (how far)
-/// stays raised for the rest of the level.  False if that never ends.
+/// `profiles`, and the relics still short of theirs, in `todo` - from the
+/// board alone.  When nothing is short the bars are pushed further, as far
+/// as it takes to leave something to roll.  With `rules.trades`, a relic
+/// short of its bar that the keep rule ranks at least as high as the bar (a
+/// trade it took: 6/3 for 5/2, the gap as near and more glory) has as good
+/// as met it, and once every relic has the bars are pushed too (the traded
+/// relics stay in the work).  False if that never ends.
 fn work(
     quest: &Quest,
     rules: &LevelRules,
     states: &[Relic],
     slots: u8,
-    escalation: &mut u32,
+    horizon: Horizon,
     profiles: &mut Vec<(usize, Bar)>,
     todo: &mut Vec<usize>,
 ) -> bool {
+    let traded = |i: usize, bar: Bar| {
+        let point = (bar.glory, bar.despair.unwrap_or(states[i].1));
+        !bar.met_by(states[i]) && rank(quest, horizon, states, i, states[i], bar) >= rank(quest, horizon, states, i, point, bar)
+    };
+    let (mut escalation, mut as_good) = (0, Vec::new());
     loop {
         plan(quest, rules, states, slots, profiles);
-        for _ in 0..*escalation {
-            escalate(quest, states, slots, profiles);
+        if escalation == 0 && rules.trades {
+            as_good.extend(profiles.iter().filter(|&&(i, bar)| traded(i, bar)).map(|p| p.0));
+        }
+        let mut pushed = true;
+        for _ in 0..escalation {
+            pushed = escalate(quest, states, slots, profiles, &as_good);
         }
         todo.clear();
         todo.extend(profiles.iter().filter(|(i, bar)| !bar.met_by(states[*i])).map(|p| p.0));
-        if !todo.is_empty() {
+        // done once there is more than traded relics to work - or nothing
+        // more to push, and they are all there is
+        if todo.iter().any(|i| !as_good.contains(i)) || (!pushed && !todo.is_empty()) {
             break;
         }
-        *escalation += 1;
-        if *escalation > MAX_ESCALATIONS {
+        escalation += 1;
+        if escalation > MAX_ESCALATIONS {
             return false;
         }
     }
@@ -281,37 +358,58 @@ fn work(
     true
 }
 
-/// Attempt with what is on hand, or summon?  A needed relic if any is
-/// affordable, else a filler, else a summon.  Of the needed relics: on a
-/// total, the one most likely to reach its bar in one attempt (a relic with
-/// less glory and more despair takes a step more easily), sparing the
-/// relics `rules.spare` keeps for later; otherwise the best-stocked.
-fn choose(
-    quest: &Quest,
-    rules: &LevelRules,
+/// The totals the play closes the gap to (glory needed, despair allowed),
+/// if there are any (`Game::horizon_for`).
+pub type Horizon = Option<(u32, u32)>;
+
+/// What one decision is made for: the quest, the plan's rules for it, the
+/// level it is made at and the totals it closes the gap to.
+struct Context<'a> {
+    quest: &'a Quest,
+    rules: &'a LevelRules,
     level: usize,
+    horizon: Horizon,
+}
+
+/// Attempt with what is on hand, or summon?  A needed relic if any is
+/// affordable, else a filler (with `rules.filler_within`, only when the spare
+/// relics on hand can fill the pity bar - `pity_left` attempts off, None if
+/// not known - in that many attempts or fewer), else a summon.  Of the
+/// needed relics: on a total, the one expected to close the most of the gap
+/// in one attempt (a relic with less glory and more
+/// despair takes a step more easily) - a relic a later level names too: it
+/// is no better kept back; otherwise the best-stocked.  Every attempt is played as
+/// `play` has it.
+fn choose(
+    ctx: &Context,
     profiles: &[(usize, Bar)],
     todo: &[usize],
+    states: &[Relic],
     stock: &[u32],
     per_attempt: u32,
+    pity_left: Option<u32>,
 ) -> Move {
+    let (quest, rules) = (ctx.quest, ctx.rules);
     let affordable = |i: usize| stock[i] >= per_attempt;
+    // a relic's bar for this level's work, if it has one
+    let bar_of = |relic: usize| profiles.iter().find(|p| p.0 == relic).map_or(Bar::new(0, None), |p| p.1);
+    let key_for = |relic: usize| play(ctx, states, relic, bar_of(relic));
     if !todo.iter().any(|&i| affordable(i)) {
-        if let Some(bar) = rules.filler {
+        if rules.filler {
             let spare = (0..stock.len())
                 .filter(|&i| affordable(i) && !contains(rules.locked, i) && !todo.contains(&i));
-            if spare.clone().next().is_some() {
-                let key = TableKey::score(level as u8, (1.0, 1.0));
-                return Move::Filler { relic: best_stocked(stock, spare), bar, key };
+            let on_hand: u32 = spare.clone().map(|i| stock[i] / per_attempt).sum();
+            let in_reach = match rules.filler_within {
+                None => true,
+                Some(limit) => pity_left.is_some_and(|left| left <= limit && left <= on_hand),
+            };
+            if in_reach && spare.clone().next().is_some() {
+                let relic = best_stocked(stock, spare);
+                return Move::Filler { relic, bar: bar_of(relic), key: key_for(relic) };
             }
         }
         return Move::Summon;
     }
-    let bar_of = |relic: usize| profiles.iter().find(|p| p.0 == relic).expect("a relic to do has a profile").1;
-    let key_for = |bar: Bar| match rules.score {
-        Some(weights) => TableKey::score(level as u8, weights),
-        None => TableKey::Target { level: level as u8, glory: bar.glory, despair: bar.despair },
-    };
     let mut ready: Vec<usize> = todo.iter().copied().filter(|&i| affordable(i)).collect();
     if let Some((preferred, _)) = rules.prefer
         && ready.iter().any(|&i| contains(preferred, i))
@@ -319,14 +417,12 @@ fn choose(
         ready.retain(|&i| contains(preferred, i));
     }
     let relic = if quest.is_total() {
-        if ready.iter().any(|&i| !contains(rules.spare, i)) {
-            ready.retain(|&i| !contains(rules.spare, i));
-        }
-        // most likely to reach its bar; the best-stocked of equals
+        // the most of the gap closed; the best-stocked of equals
         let mut best: Option<(usize, f64)> = None;
         for &i in &ready {
-            let bar = bar_of(i);
-            let p = hit_chance(key_for(bar), bar);
+            let key = key_for(i);
+            let TableKey::Close { glory, despair, .. } = key else { unreachable!("a total plays to close the gap") };
+            let p = expected_closing(key, (glory, despair), states[i]);
             if best.is_none_or(|(b, bp)| p > bp + 1e-12 || ((p - bp).abs() <= 1e-12 && stock[i] > stock[b])) {
                 best = Some((i, p));
             }
@@ -335,8 +431,32 @@ fn choose(
     } else {
         best_stocked(stock, ready.into_iter())
     };
-    let bar = bar_of(relic);
-    Move::Quest { relic, bar, key: key_for(bar), closer: rules.closer }
+    Move::Quest { relic, bar: bar_of(relic), key: key_for(relic) }
+}
+
+/// How an attempt on relic `pick` is played: a relic the quest holds to a
+/// bar (`named_bar`) for the best chance of it, then to close the gap to the
+/// totals it plays to; any other relic to close that gap - however little
+/// this level asks (9/0 beats a 9/1 that clears it); then, either way, more
+/// glory and less despair, weighed as those totals need them.
+fn play(ctx: &Context, states: &[Relic], pick: usize, bar: Bar) -> TableKey {
+    let level = ctx.level as u8;
+    let (glory, despair) = aim(ctx.horizon, states, pick);
+    match named_bar(ctx.quest, pick, bar) {
+        Some(bar) => TableKey::target(level, bar, (glory, despair), states[pick]),
+        None => TableKey::close(level, glory, despair, states[pick]).tie(tie(ctx.quest, ctx.horizon, states)),
+    }
+}
+
+/// The bar the quest holds relic `pick` to, if any: a named relic's on a
+/// named level, every relic's on an every-relic level (`bar`, the plan's
+/// bar for it).  A total holds no relic to a bar.
+pub(super) fn named_bar(quest: &Quest, pick: usize, bar: Bar) -> Option<Bar> {
+    match quest {
+        Quest::Relics { which, .. } if which.contains(&pick) => Some(bar),
+        Quest::Each(_) => Some(bar),
+        _ => None,
+    }
 }
 
 /// The plan's next move from a board seen at `level`, with no memory of the
@@ -350,13 +470,16 @@ pub(super) fn next_move(
     states: &[Relic],
     stock: &[u32],
     per_attempt: u32,
+    pity_left: Option<u32>,
+    horizon: Horizon,
 ) -> Option<(Move, Vec<(usize, Bar)>)> {
-    let (mut escalation, mut profiles, mut todo) = (0, Vec::new(), Vec::new());
-    if !work(quest, rules, states, slots_at(level), &mut escalation, &mut profiles, &mut todo) {
+    let (mut profiles, mut todo) = (Vec::new(), Vec::new());
+    if !work(quest, rules, states, slots_at(level), horizon, &mut profiles, &mut todo) {
         return None;
     }
     let bars = profiles.iter().filter(|(i, _)| todo.contains(i)).copied().collect();
-    Some((choose(quest, rules, level, &profiles, &todo, stock, per_attempt), bars))
+    let ctx = Context { quest, rules, level, horizon };
+    Some((choose(&ctx, &profiles, &todo, states, stock, per_attempt, pity_left), bars))
 }
 
 /// Of `candidates`, the relic we hold the most of (first on a tie).
@@ -428,73 +551,92 @@ fn repair(
 }
 
 /// Nothing left to roll but a total is still short: ask one relic for more
-/// (more glory only of a relic with room for it on `slots` slots).
-fn escalate(quest: &Quest, states: &[Relic], slots: u8, profiles: &mut [(usize, Bar)]) {
-    let Quest::Total { despair: need_despair, .. } = *quest else { return };
-    if profiles.is_empty() {
-        return;
-    }
-    let first_max = |key: &dyn Fn(Relic) -> (i32, i32)| {
-        let mut best = 0;
-        for k in 1..profiles.len() {
-            if key(states[profiles[k].0]) > key(states[profiles[best].0]) {
-                best = k;
-            }
-        }
-        best
-    };
-    if totals(states).1 > need_despair {
-        // the relic with the most despair loses one
-        let k = first_max(&|(g, d)| (i32::from(d), -i32::from(g)));
-        let (g, d) = states[profiles[k].0];
-        let bar = &mut profiles[k].1;
-        *bar = Bar::new(bar.glory.max(g), Some(d.saturating_sub(1)));
-    } else {
-        // the relic with the least glory gains one, if any has room
-        let k = first_max(&|(g, d)| (-i32::from(g), i32::from(d)));
-        let g = states[profiles[k].0].0;
-        if g < slots {
-            profiles[k].1.glory = g + 1;
+/// - less despair while the total has too much, the relic with the most
+/// first, otherwise more glory, the relic with the least first (and only of
+/// a relic with room for it on `slots` slots) - never one in `skip`.  False
+/// if no relic can be asked for more.
+fn escalate(quest: &Quest, states: &[Relic], slots: u8, profiles: &mut [(usize, Bar)], skip: &[usize]) -> bool {
+    let Quest::Total { despair: need_despair, .. } = *quest else { return false };
+    let over = totals(states).1 > need_despair;
+    let room = |(g, d): Relic| if over { d > 0 } else { g < slots };
+    // the relic most worth asking: the most despair (then least glory), or the least glory (then most despair)
+    let key = |(g, d): Relic| if over { (i32::from(d), -i32::from(g)) } else { (-i32::from(g), i32::from(d)) };
+    let mut best: Option<usize> = None;
+    for k in (0..profiles.len()).filter(|&k| !skip.contains(&profiles[k].0) && room(states[profiles[k].0])) {
+        if best.is_none_or(|b| key(states[profiles[k].0]) > key(states[profiles[b].0])) {
+            best = Some(k);
         }
     }
+    let Some(k) = best else { return false };
+    let (g, d) = states[profiles[k].0];
+    let bar = &mut profiles[k].1;
+    *bar = if over { Bar::new(bar.glory.max(g), Some(d - 1)) } else { Bar { glory: g + 1, ..*bar } };
+    true
 }
 
-/// Keep a roll over what the relic already has?  Anything that dominates, or
-/// the first result to clear the bar.  A dead end lands as (0, 0) and so is
-/// refused by the same rule.
-fn accept(old: Relic, new: Relic, bar: Bar) -> bool {
-    let dominates = new.0 >= old.0 && new.1 <= old.1 && new != old;
-    dominates || (bar.met_by(new) && !bar.met_by(old))
-}
-
-/// Keep a quest roll?  As `accept` has it, or, with `closer` on a total
-/// level, if it narrows the board's gap.
-pub(super) fn keeps(
-    quest: &Quest,
-    closer: bool,
-    states: &[Relic],
-    pick: usize,
-    new: Relic,
-    bar: Bar,
-) -> bool {
-    accept(states[pick], new, bar)
-        || (closer && quest.is_total() && quest.gap_after(states, pick, new) < quest.gap(states))
-}
-
-/// Keep a filler roll?  Only if it helps toward the filler bar and cannot set
-/// back the quest in progress.
-pub(super) fn filler_keeps(quest: &Quest, states: &[Relic], pick: usize, new: Relic, filler: Bar) -> bool {
-    let old = states[pick];
-    if !accept(old, new, filler) {
-        return false;
+/// What an attempt on relic `pick` closes the gap to, as (glory, despair):
+/// what the relic would have to become to bring the board to the totals
+/// `horizon` on its own - every glory short and despair over on the board
+/// counts, as far as one relic can take it.  With no totals ahead, every
+/// slot a glory and no despair.  Off the
+/// board's range where the gap is more than a relic holds (`TableKey::close`
+/// brings it in).
+pub(super) fn aim(horizon: Horizon, states: &[Relic], pick: usize) -> (i64, i64) {
+    match horizon {
+        Some((glory, despair)) => {
+            let (g, d) = totals(states);
+            let (g0, d0) = states[pick];
+            (i64::from(g0) + i64::from(glory) - i64::from(g), i64::from(d0) + i64::from(despair) - i64::from(d))
+        }
+        None => (i64::from(u8::MAX), 0),
     }
-    match quest {
-        Quest::Total { .. } => quest.gap_after(states, pick, new) <= quest.gap(states),
-        // a relic the level needs must not drop back below the bar it clears
-        Quest::Relics { which, bar } if which.contains(&pick) => bar.met_by(new) || !bar.met_by(old),
-        Quest::Relics { .. } => true,
-        Quest::Each(bar) => bar.met_by(new) || !bar.met_by(old),
+}
+
+/// How a relic's memory ranks for the play (`play`): its bar met (if the
+/// quest holds it to one), then the board nearer the totals `horizon`, then
+/// glory less despair (weighed by `tie`).
+fn rank(quest: &Quest, horizon: Horizon, states: &[Relic], pick: usize, r: Relic, bar: Bar) -> (bool, i64, i64) {
+    let named = named_bar(quest, pick, bar);
+    let met = named.is_some_and(|bar| bar.met_by(r));
+    let (wg, wd) = if named.is_some() { (1, 1) } else { tie(quest, horizon, states) };
+    let off = horizon.map_or(0, |(glory, despair)| {
+        let (g, d) = totals(states);
+        let (g, d) = (g - u32::from(states[pick].0) + u32::from(r.0), d - u32::from(states[pick].1) + u32::from(r.1));
+        i64::from(glory.saturating_sub(g) + d.saturating_sub(despair))
+    });
+    (met, -off, i64::from(wg) * i64::from(r.0) - i64::from(wd) * i64::from(r.1))
+}
+
+/// How a glory success weighs against a despair success once a totals
+/// level's gap is settled, as (glory, despair): as the goal's totals `goal`
+/// still need them - how short of its glory the board is against how far
+/// over its despair.  In five classes, by the share s of the shortfall that
+/// is glory: under a third 1 : 3, under a half 2 : 3, a half 1 : 1, up to two
+/// thirds 3 : 2, more 3 : 1 (4 short, 6 over: 2 : 3).  A few classes decide
+/// as the exact ratio does wherever a glory meets a despair or two, and keep
+/// the attempt tables few.  1 : 1 where the goal needs neither, and on a
+/// level that holds relics to bars.
+pub(super) fn tie(quest: &Quest, goal: Horizon, states: &[Relic]) -> (u8, u8) {
+    let Some((glory, despair)) = goal.filter(|_| quest.is_total()) else { return (1, 1) };
+    let (g, d) = totals(states);
+    let (short, over) = (glory.saturating_sub(g), d.saturating_sub(despair));
+    let all = short + over;
+    match () {
+        _ if all == 0 || 2 * short == all => (1, 1),
+        _ if 3 * short < all => (1, 3),
+        _ if 2 * short < all => (2, 3),
+        _ if 3 * short <= 2 * all => (3, 2),
+        _ => (3, 1),
     }
+}
+
+/// Keep a roll (a quest roll or a filler alike)?  If it ranks above the
+/// memory in place (`rank`): its bar newly met, or as met and the board
+/// nearer the totals `horizon`, or as near and more glory less despair
+/// (weighed as those totals need them, `tie`).  A dead end lands as (0, 0)
+/// and is never kept.
+pub(super) fn keeps(quest: &Quest, horizon: Horizon, states: &[Relic], pick: usize, new: Relic, bar: Bar) -> bool {
+    new != (0, 0) && rank(quest, horizon, states, pick, new, bar) > rank(quest, horizon, states, pick, states[pick], bar)
 }
 
 #[cfg(test)]
@@ -506,27 +648,81 @@ mod tests {
     }
 
     #[test]
-    fn a_roll_is_kept_when_it_dominates_or_first_clears_the_bar() {
-        let bar = Bar::new(4, Some(2));
-        assert!(accept((3, 2), (4, 2), bar)); // better glory
-        assert!(accept((4, 2), (4, 1), bar)); // less despair
-        assert!(!accept((4, 2), (4, 2), bar)); // no change
-        assert!(accept((3, 0), (4, 2), bar)); // worse despair, but clears the bar
-        assert!(!accept((5, 1), (4, 2), bar)); // already clear: only a dominating roll
-        assert!(!accept((2, 1), (0, 0), bar)); // a dead end is never taken
+    fn at_the_top_the_leftovers_go_into_the_crit_relic_for_the_most_amplification() {
+        use super::super::{ATK, CRIT, MAX_LEVEL, Target, lookahead_plan};
+        let game = Game::standard();
+        let rules = game.rules(&lookahead_plan(Target::level(MAX_LEVEL)).unwrap());
+        let options = RunOptions::to(MAX_LEVEL);
+        let mut tables = LocalTables::default();
+        let mut extra = 0;
+        for i in 0..30 {
+            let mut partial = start(game, &options, (ATK, CRIT), Rng::for_run(5, i));
+            climb(game, &rules, &options, (ATK, CRIT), &mut tables, &mut partial, MAX_LEVEL).unwrap();
+            let before = *partial.levels.last().unwrap();
+            let after = finish(&options, (ATK, CRIT), &mut tables, partial).levels[MAX_LEVEL - 1];
+            // more attempts, no more diamonds, and a crit relic at least as good
+            assert_eq!((after.diamonds, after.by_pity, after.atk), (before.diamonds, before.by_pity, before.atk));
+            assert!(after.attempts >= before.attempts);
+            assert!(amplification(after.crit) >= amplification(before.crit));
+            extra += after.attempts - before.attempts;
+        }
+        assert!(extra > 0);
     }
 
     #[test]
-    fn a_roll_short_of_the_bar_but_nearer_is_kept() {
-        // a 7/3 relic asked for 7/1: a 7/2 misses the bar but is a step
-        // nearer - kept, for a named quest or a total, closer rule or not
+    fn a_bar_comes_first_then_the_board_nearer_the_goal() {
+        // a 7/3 relic named for 7/1; the goal's totals 30 glory / 3 despair,
+        // the board at 15 / 5 (15 short, 2 over: 17 off)
         let bar = Bar::new(7, Some(1));
-        let states = [(7, 3), (8, 2)];
         let named = Quest::Relics { which: vec![0], bar };
-        for closer in [false, true] {
-            assert!(keeps(&named, closer, &states, 0, (7, 2), bar));
-            assert!(keeps(&total(15, 3), closer, &states, 0, (7, 2), bar));
-            assert!(!keeps(&named, closer, &states, 0, (6, 2), bar)); // a glory given up for it: not nearer
+        let goal = Some((30, 3));
+        let states = [(7, 3), (8, 2)];
+        assert!(keeps(&named, goal, &states, 0, (7, 1), bar)); // the bar, newly met
+        assert!(keeps(&named, goal, &states, 0, (7, 2), bar)); // short of it, but the board 16 off
+        assert!(!keeps(&named, goal, &states, 0, (6, 2), bar)); // still 17 off, and no more glory less despair
+        assert!(keeps(&named, goal, &states, 0, (6, 1), bar)); // a glory for two despair: 16 off
+        assert!(!keeps(&named, goal, &states, 0, (0, 0), bar)); // a wipe
+        // the bar met: never given up, however much nearer the board would be
+        let met = [(7, 1), (8, 2)];
+        assert!(keeps(&named, goal, &met, 0, (9, 1), bar));
+        assert!(!keeps(&named, goal, &met, 0, (6, 0), bar));
+    }
+
+    #[test]
+    fn a_total_looks_past_its_own_quest_to_the_goal() {
+        // this level asks 15 / 3, the goal 30 / 0: 9/0 beats a 9/1 that clears this level
+        let quest = total(15, 3);
+        let goal = Some((30, 0));
+        let states = [(9, 1), (6, 0)];
+        assert!(keeps(&quest, goal, &states, 0, (9, 0), Bar::new(0, None)));
+        // what an attempt aims at: the relic fixing the goal's totals alone
+        let states = [(8, 2), (8, 1)];
+        assert_eq!(aim(Some((20, 0)), &states, 0), (12, -1));
+        let key = TableKey::close(19, 12, -1, (8, 2));
+        assert_eq!(key, TableKey::Close { level: 19, glory: 9, despair: 0, gap: 3, tie: (1, 1) });
+        assert_eq!(TableKey::close(19, 9, 0, (7, 1)), key); // as far off: the same table
+        // no totals ahead: every slot a glory, no despair
+        assert_eq!(aim(None, &states, 0), (255, 0));
+        // a named relic: its bar first, then the goal's totals
+        let named = Quest::Relics { which: vec![0], bar: Bar::new(8, Some(1)) };
+        let ctx = Context { quest: &named, rules: &rules_for_tests(), level: 19, horizon: Some((20, 0)) };
+        assert_eq!(
+            play(&ctx, &states, 0, Bar::new(8, Some(1))),
+            TableKey::Target { level: 19, glory: 8, despair: 1, then: (9, 0, 3) }
+        );
+        assert_eq!(play(&ctx, &states, 1, Bar::new(0, None)), TableKey::close(19, 12, -2, (8, 1)));
+    }
+
+    fn rules_for_tests() -> LevelRules {
+        LevelRules {
+            base: Bar::new(4, Some(2)),
+            surgical: true,
+            filler: false,
+            filler_within: None,
+            locked: 0,
+            prefer: None,
+            ahead: false,
+            trades: false,
         }
     }
 
@@ -546,12 +742,12 @@ mod tests {
         let rules = LevelRules {
             base: Bar::new(4, Some(2)),
             surgical: true,
-            closer: true,
-            score: None,
-            filler: Some(Bar::new(4, Some(2))),
+            filler: true,
+            filler_within: None,
             locked: 0,
-            spare: 0b10, // the crit relic, on the way to the top
             prefer: None,
+            ahead: false,
+            trades: false,
         };
         let states = [(7, 1), (7, 1), (8, 2), (8, 2), (8, 2), (7, 1), (8, 2), (8, 1), (7, 1), (9, 1), (7, 2), (8, 3)];
         let quest = total(96, 16);
@@ -559,7 +755,8 @@ mod tests {
             let mut profiles = Vec::new();
             plan(&quest, &rules, &states, 9, &mut profiles);
             let todo: Vec<usize> = profiles.iter().map(|p| p.0).collect();
-            match choose(&quest, &rules, 19, &profiles, &todo, stock, 10) {
+            let ctx = Context { quest: &quest, rules: &rules, level: 19, horizon: Some((96, 16)) };
+            match choose(&ctx, &profiles, &todo, &states, stock, 10, None) {
                 Move::Quest { relic, bar, .. } => (relic, bar),
                 _ => panic!("a quest roll"),
             }
@@ -595,38 +792,45 @@ mod tests {
     fn escalation_targets_the_relic_holding_the_board_back() {
         let states = [(5, 1), (3, 2), (4, 3)];
         let mut profiles: Vec<_> = (0..3).map(|i| (i, Bar::new(4, Some(2)))).collect();
-        escalate(&total(12, 5), &states, 9, &mut profiles); // despair 6 > 5
+        escalate(&total(12, 5), &states, 9, &mut profiles, &[]); // despair 6 > 5
         assert_eq!(profiles[2].1, Bar::new(4, Some(2)));
         let states = [(5, 1), (3, 1), (4, 1)];
-        escalate(&total(13, 5), &states, 9, &mut profiles); // glory short
+        escalate(&total(13, 5), &states, 9, &mut profiles, &[]); // glory short
         assert_eq!(profiles[1].1, Bar::new(4, Some(2)));
     }
 
     #[test]
-    fn a_total_takes_the_step_most_likely_to_land() {
+    fn a_total_takes_the_relic_closing_the_most_of_the_gap() {
         let rules = LevelRules {
             base: Bar::new(5, Some(2)),
             surgical: true,
-            closer: true,
-            score: None,
-            filler: None,
+            filler: false,
+            filler_within: None,
             locked: 0,
-            spare: 0,
             prefer: None,
+            ahead: false,
+            trades: false,
         };
         // glory short: 8/1 -> 9/1, or 7/2 -> 8/2 (despair room to spare)
+        let states = [(8, 1), (7, 2)];
         let profiles = vec![(0, Bar::new(9, Some(1))), (1, Bar::new(8, Some(2)))];
-        let pick = |rules: &LevelRules, stock: &[u32]| match choose(&total(30, 10), rules, 18, &profiles, &[0, 1], stock, 10) {
+        let quest = total(30, 10);
+        let pick = |rules: &LevelRules, stock: &[u32]| match choose(
+            &Context { quest: &quest, rules, level: 18, horizon: Some((30, 10)) },
+            &profiles,
+            &[0, 1],
+            &states,
+            stock,
+            10,
+            None,
+        ) {
             Move::Quest { relic, .. } => relic,
             other => panic!("expected a quest roll, got {other:?}"),
         };
-        // the easier step, though the other relic is far better stocked
+        // the relic with more room to close, though the other is far better stocked
         assert_eq!(pick(&rules, &[300, 20]), 1);
-        // unless it is spared for later and the other is affordable
-        let spare = LevelRules { spare: 0b10, ..rules.clone() };
-        assert_eq!(pick(&spare, &[300, 20]), 0);
-        // a spared relic is still used when it is all there is
-        assert_eq!(pick(&spare, &[5, 20]), 1);
+        // and the other when it is all that is affordable
+        assert_eq!(pick(&rules, &[300, 5]), 0);
     }
 
     #[test]
@@ -639,23 +843,46 @@ mod tests {
         // and escalation asks no more glory of a full relic either
         let full = [(9, 1), (9, 0)];
         let mut profiles: Vec<_> = (0..2).map(|i| (i, Bar::new(9, Some(1)))).collect();
-        escalate(&total(30, 5), &full, 9, &mut profiles);
+        escalate(&total(30, 5), &full, 9, &mut profiles, &[]);
         assert!(profiles.iter().all(|(_, bar)| bar.glory <= 9));
     }
 
     #[test]
-    fn filler_never_sets_the_quest_back() {
+    fn a_totals_level_weighs_glory_against_despair_as_the_goal_needs() {
+        // the goal 96 / 16, the board 92 / 22: 4 glory short, 6 despair over
+        let mut board = vec![(8, 2); 11];
+        board.push((4, 0));
+        assert_eq!(totals(&board), (92, 22));
+        let level = total(94, 19);
+        assert_eq!(tie(&level, Some((96, 16)), &board), (2, 3));
+        assert_eq!(tie(&level, Some((100, 22)), &board), (3, 1)); // 8 short, none over
+        assert_eq!(tie(&level, Some((95, 19)), &board), (1, 1)); // 3 short, 3 over
+        assert_eq!(tie(&level, Some((80, 30)), &board), (1, 1)); // the goal needs neither
+        assert_eq!(tie(&Quest::Each(Bar::new(4, Some(2))), Some((96, 16)), &board), (1, 1));
+        // as near the goal's totals either way (+1 glory or -1 despair): the
+        // despair shed weighs more, the goal being further over on despair
+        // than short on glory
+        let goal = Some((96, 16));
+        let quest = total(80, 30);
+        assert!(rank(&quest, goal, &board, 0, (8, 1), Bar::new(0, None)) > rank(&quest, goal, &board, 0, (9, 2), Bar::new(0, None)));
+        assert!(keeps(&quest, goal, &board, 0, (8, 1), Bar::new(0, None)));
+    }
+
+    #[test]
+    fn a_filler_is_kept_as_a_quest_roll_is() {
         let named = Quest::Relics { which: vec![0], bar: Bar::new(5, Some(2)) };
-        let states = [(5, 2), (0, 0)];
-        // the named relic already clears its bar: a roll off it is refused
-        assert!(!filler_keeps(&named, &states, 0, (6, 3), Bar::new(4, Some(2))));
-        // any other relic is free to move toward the filler bar
-        assert!(filler_keeps(&named, &states, 1, (4, 2), Bar::new(4, Some(2))));
-        // on a total, clearing the filler bar must not widen the gap
+        let states = [(5, 2), (3, 0)];
+        // a named relic that clears its bar: a roll off it is refused
+        assert!(!keeps(&named, None, &states, 0, (6, 3), Bar::new(5, Some(2))));
+        // a relic the quest does not name, no totals ahead: more glory less despair
+        assert!(keeps(&named, None, &states, 1, (4, 0), Bar::new(0, None)));
+        assert!(!keeps(&named, None, &states, 1, (4, 2), Bar::new(0, None)));
+        // with totals ahead: anything bringing the board nearer them
         let mut board = vec![(5, 3)];
         board.extend([(5, 1); 10]);
-        board.push((4, 1)); // exactly 59 glory
-        assert!(!filler_keeps(&total(59, 17), &board, 0, (4, 2), Bar::new(4, Some(2))));
+        board.push((4, 1)); // 59 glory, 14 despair
+        assert!(keeps(&named, Some((60, 17)), &board, 11, (5, 2), Bar::new(0, None))); // a glory short: +1
+        assert!(!keeps(&named, Some((59, 14)), &board, 11, (5, 2), Bar::new(0, None))); // despair now over
     }
 
     #[test]
@@ -663,12 +890,12 @@ mod tests {
         let rules = LevelRules {
             base: Bar::new(5, Some(1)),
             surgical: false,
-            closer: false,
-            score: None,
-            filler: None,
+            filler: false,
+            filler_within: None,
             locked: 0b01,
-            spare: 0,
             prefer: None,
+            ahead: false,
+            trades: false,
         };
         let mut out = Vec::new();
         plan(&Quest::Each(Bar::new(4, Some(2))), &rules, &[(0, 0), (0, 0)], 9, &mut out);

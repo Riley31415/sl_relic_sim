@@ -13,7 +13,7 @@ use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand};
 
-use relic::format::{commas, human};
+use relic::format::commas;
 use relic::levels::report::{self, HABITS};
 use relic::levels::{self, Game, Plan, RunOptions, SearchOptions, Target};
 use relic::solve_report::SolveArgs;
@@ -148,10 +148,8 @@ struct Levels {
     /// write the whole LEVELS.md document to PATH
     #[arg(long, value_name = "PATH")]
     markdown: Option<String>,
-    /// search for the plan that makes each level-up as cheap as possible on its own
-    #[arg(long)]
-    greedy: bool,
-    /// search for the cheapest plan to --max-level overall (starts from greedy)
+    /// search for the cheapest plan to --max-level overall (starts from the
+    /// saved plan for it)
     #[arg(long)]
     lookahead: bool,
     /// search a look-ahead plan for every target (each level, then each crit
@@ -162,6 +160,10 @@ struct Levels {
     /// default every target PATH does not have yet
     #[arg(long, num_args = 1..)]
     only: Vec<String>,
+    /// the mean diamonds to each of these targets (e.g. 20+43) under its saved
+    /// look-ahead plan, over --runs runs (default 20000): a quick check
+    #[arg(long, num_args = 1.., value_name = "TARGET")]
+    cost: Vec<String>,
 }
 
 fn solve(a: Solve) -> Result<String, String> {
@@ -212,17 +214,29 @@ fn levels(a: Levels) -> Result<String, String> {
     if let Some(path) = &a.lookahead_all {
         return lookahead_all(game, path, &a.only);
     }
+    if !a.cost.is_empty() {
+        let runs = a.runs.unwrap_or(20000);
+        let mut out = String::new();
+        for code in &a.cost {
+            let target = levels::Target::parse(code)?;
+            let plan = levels::lookahead_plan(target)?;
+            let start = std::time::Instant::now();
+            let cost = levels::target_cost(game, &plan, runs, a.seed, target)?;
+            let took = start.elapsed().as_secs_f64();
+            out.push_str(&format!("{}: {}  ({} runs, {took:.1}s)
+", target.code(), commas(cost, 0), commas(runs as f64, 0)));
+        }
+        return Ok(out);
+    }
     let runs = a.runs.unwrap_or(2000);
-    if a.greedy || a.lookahead {
+    if a.lookahead {
         return search(game, &a);
     }
     if a.compare {
         return report::compare(game, runs, a.seed, a.max_level);
     }
     let plan = levels::strategy(&a.strategy).ok_or(format!("no plan called '{}'", a.strategy))?;
-    // a plan's crit relic tiers only follow a climb to the top
-    let tiers = if a.max_level == levels::MAX_LEVEL { levels::tiers(&a.strategy) } else { &[] };
-    let options = RunOptions::to(a.max_level).with_stock(a.start_stock).with_tiers(tiers);
+    let options = RunOptions::to(a.max_level).with_stock(a.start_stock);
     let rows = report::level_rows(game, &plan, runs, a.seed, &options)?;
     if a.chart {
         return Ok(report::cost_chart_svg(&rows, "Cost to raise the inheritor") + "\n");
@@ -236,31 +250,10 @@ fn levels(a: Levels) -> Result<String, String> {
 }
 
 fn search(game: &Game, a: &Levels) -> Result<String, String> {
-    let quiet = |_: &str| {};
-    let greedy_options = SearchOptions { max_level: a.max_level, ..SearchOptions::greedy() };
     let mut out = String::new();
-    if a.greedy {
-        let (_plan, rows) = levels::greedy_search(game, greedy_options, &quiet)?;
-        out.push_str("Greedy search: each level-up made as cheap as it can be on its own\n");
-        let mut total = 0.0;
-        for row in rows {
-            total += row.cost;
-            let alt = row
-                .runner_up
-                .map(|(choice, cost)| format!("   next best: {} {}", choice.label(), human(cost)))
-                .unwrap_or_default();
-            out.push_str(&format!(
-                "  {:>3} | {:>6} (total {:>6}) | {}{alt}\n",
-                row.level,
-                human(row.cost),
-                human(total),
-                row.choice.label()
-            ));
-        }
-        return Ok(out);
-    }
     println!("Look-ahead search: cheapest plan to level {} overall", a.max_level);
-    let (start, _rows) = levels::greedy_search(game, greedy_options, &quiet)?;
+    let target = levels::Target::level(a.max_level);
+    let start = levels::lookahead_plan(target)?;
     let log = |line: &str| println!("  {line}");
     let options = SearchOptions { max_level: a.max_level, ..SearchOptions::lookahead() };
     let (plan, cost): (Plan, f64) = levels::lookahead_search(game, &start, options, &log)?;
@@ -284,9 +277,11 @@ fn lookahead_all(game: &Game, path: &str, only: &[String]) -> Result<String, Str
     let log = |line: &str| println!("  {line}");
     let order = levels::targets();
     // one target at a time, written as each finishes, so a long search can be
-    // stopped and resumed
+    // stopped and resumed; each also starts from the one before it
     for target in todo {
-        for (target, plan, _) in levels::lookahead_all(game, Some(&[target]), &log)? {
+        let before = order.iter().position(|t| *t == target).and_then(|i| i.checked_sub(1)).map(|i| order[i]);
+        let extra: Vec<Plan> = plans.iter().filter(|(t, _)| Some(*t) == before).map(|(_, p)| p.clone()).collect();
+        for (target, plan, _) in levels::lookahead_all(game, Some(&[target]), &extra, &log)? {
             plans.retain(|(t, _)| *t != target);
             plans.push((target, plan));
         }

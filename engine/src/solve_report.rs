@@ -774,12 +774,6 @@ fn amplification_curve_svg(solver: &Solver, a: &Analysis) -> String {
         mx + 5.0,
         n(mt - 12.0)
     ));
-    out.push(format!(
-        "<text class=\"ac-b ac-ink\" x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"middle\">{}</text>",
-        x_mid(value(mode_bits)),
-        y_of(peak) - 6.0,
-        pct3(peak)
-    ));
     // the floored column holds the wipe, plus any run washed out to zero
     let wipe_p = by_amp.get((lo as f64).to_bits());
     if wipe_p > 0.0 {

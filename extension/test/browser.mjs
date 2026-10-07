@@ -41,11 +41,11 @@ server.listen(0, '127.0.0.1', () => {
     const ok = !result.error && result.kind === 'board'
       && JSON.stringify(result.state) === JSON.stringify({ gf: 2, gs: 2, df: 1, ds: 0, ms: 8, sp: 9 })
       && advice.step === 'quest' && advice.relic === 11 && advice.goal === 19
-      && JSON.stringify(advice.objective) === JSON.stringify({ kind: 'target', glory: 8, despair: 2 })
-      && JSON.stringify(result.keeps) === JSON.stringify([true, true, false])
+      && JSON.stringify(advice.objective) === JSON.stringify({ kind: 'close', glory: 9, despair: 0, tie: { glory: 2, despair: 3 } })
+      && JSON.stringify(result.keeps) === JSON.stringify([true, true, true])
       && JSON.stringify(result.pity) === JSON.stringify([9000, 180])
       && ['glory', 'despair', 'train'].includes(result.adviceMove)
-      && result.firstAdvice?.step === 'quest' && result.firstAdvice.objective?.kind === 'target'
+      && result.firstAdvice?.step === 'quest' && result.firstAdvice.objective?.kind === 'close'
       && result.settled?.odds === 0 && result.settled.move === 'train' && result.settled.ampMove === 'train' && result.open === 'train';
     console.log(ok ? 'browser smoke test passed' : 'browser smoke test FAILED');
     if (!ok) process.exitCode = 1;

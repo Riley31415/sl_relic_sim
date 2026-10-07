@@ -3,9 +3,8 @@
 use std::fmt::Write as _;
 
 use super::{
-    CRIT, DEFAULT_PROFILE, GREEDY_TIERS, Game, MAX_LEVEL, Plan, Profile, Quest, RELIC_SHORT, RELICS,
+    CRIT, DEFAULT_PROFILE, CRIT_TIERS, Game, MAX_LEVEL, Plan, Profile, Quest, RELIC_SHORT, RELICS,
     RelicSet, RunOptions, amplification, damage, lookahead_plans, members, pity_gain, pity_needed, strategy,
-    tiers,
 };
 use crate::economy::{
     CONVERT_FROM, CONVERT_TO, DIAMONDS_PER_SUMMON, RELIC_TYPES, RELICS_PER_ATTEMPT, RELICS_PER_SUMMON,
@@ -13,7 +12,7 @@ use crate::economy::{
 use crate::format::{amp_pct, commas, human, pct, signed_pct};
 use crate::solver::{Config, Solver, Strategy, TIERS};
 
-pub const HABITS: &str = "attempt as soon as any relic the quest needs is affordable; use the affordable needed relic likeliest to make its step (on a total level; the one you hold the most of otherwise, and of equals); keep a result only if it helps";
+pub const HABITS: &str = "attempt as soon as any relic the quest needs is affordable; use the affordable needed relic that closes the most of the gap per attempt (on a total level; the one you hold the most of otherwise, and of equals); play every attempt to close the gap; keep a result only if it helps";
 
 /// A bar as `glory+ / despair-`, e.g. 4+ / 2-.
 pub fn bar_text(glory: u8, despair: Option<u8>) -> String {
@@ -152,25 +151,21 @@ pub fn describe_step(game: &Game, plan: &Plan, level: usize) -> String {
 fn describe_quest(game: &Game, plan: &Plan, level: usize) -> String {
     let step = plan.step(level);
     let locked = plan.protected(game, level);
-    let score = if step.score {
-        "; play each attempt for max glory and min despair, weighted equally, not all-or-nothing for the bar"
-    } else {
-        ""
-    };
     let (pg, pd) = match step.profile {
         Some(Profile::Bar(g, d)) => (g, d),
         _ => DEFAULT_PROFILE,
     };
     match game.quests[level].as_ref().expect("checked above") {
         Quest::Relics { which, bar } => {
+            let then = if step.ahead { "the totals ahead" } else { "the goal's totals" };
             let mut text =
-                format!("roll {} to {}", names(super::set_of(which)), bar_text(bar.glory, bar.despair));
+                format!("roll {} for the best chance of {}, then for {then}", names(super::set_of(which)), bar_text(bar.glory, bar.despair));
             // the levels whose work (or filler) left these relics' stock untouched
             let banked: Vec<String> = (2..level)
                 .filter(|&lv| {
                     super::set_of(which) & plan.protected(game, lv) != 0
                         && (game.quests[lv].as_ref().is_some_and(Quest::is_total)
-                            || plan.step(lv).filler.is_some())
+                            || plan.step(lv).filler)
                 })
                 .map(|lv| lv.to_string())
                 .collect();
@@ -186,12 +181,16 @@ fn describe_quest(game: &Game, plan: &Plan, level: usize) -> String {
         }
         Quest::Each(bar) => {
             let despair = bar.despair.map_or(pd, |d| d.min(pd));
-            format!("roll every relic that is short to {}{score}", bar_text(bar.glory.max(pg), Some(despair)))
+            format!(
+                "roll every relic that is short to {}, each for the best chance of its bar, then for {}",
+                bar_text(bar.glory.max(pg), Some(despair)),
+                if step.ahead { "the totals ahead" } else { "the goal's totals" }
+            )
         }
         Quest::Total { .. } => {
             // which relic is a stock question, not a quality one: preferring the
             // next level's relics (or ones already worked on) never paid
-            let mut pool = "whichever relic is likeliest to make its step".to_string();
+            let mut pool = "whichever relic closes the most of the gap per attempt".to_string();
             if locked != 0 {
                 let _ = write!(pool, ", except {}", names(locked));
             }
@@ -200,12 +199,18 @@ fn describe_quest(game: &Game, plan: &Plan, level: usize) -> String {
                     "repair, do not rebuild: using {pool}, shave one despair at a time off relics with 2 or more (the worst first) until the total fits, then add one glory at a time"
                 )
             } else {
-                format!("roll {pool} to {} until the totals clear", bar_text(pg, Some(pd)))
+                format!(
+                    "roll {pool} to {} until the totals clear (every relic there{} and still short: the bars go a step further)",
+                    bar_text(pg, Some(pd)),
+                    if step.trades { " - or traded off its bar for a result the keep rule ranks as high -" } else { "" }
+                )
             };
-            text.push_str(score);
-            if step.closer {
-                text.push_str("; take any roll that closes the gap, even if it is not better on both bars");
-            }
+            text.push_str(if step.ahead {
+                "; every attempt closes the gap to the totals ahead - the most glory and the least despair any level up to the goal asks - not just this level's (9/0 beats a 9/1 that clears it)"
+            } else {
+                "; every attempt closes this level's gap, and keeps going past it (9/0 beats a 9/1 that clears it)"
+            });
+            text.push_str(", then goes for more glory and less despair, weighed as those totals still need them; a roll is kept if it brings the board nearer them, or as near with more glory less despair");
             if locked != 0 {
                 let next = game.next_named(level).map_or(0, |(lvl, _)| lvl);
                 let _ = write!(text, " (their stock is banked for level {next})");
@@ -223,17 +228,22 @@ fn describe_filler(game: &Game, plan: &Plan, level: usize) -> String {
         commas(f64::from(needed), 0),
         needed.div_ceil(gain)
     );
-    let Some((g, d)) = plan.step(level).filler else {
+    if !plan.step(level).filler {
         return format!(". When nothing the quest needs is affordable, summon. {pity}");
-    };
+    }
     let mut spare = "the best-stocked spare relic".to_string();
     let locked = plan.protected(game, level);
     if locked != 0 {
         let _ = write!(spare, " (never {})", names(locked));
     }
+    let when = match plan.step(level).filler_within {
+        Some(n) => format!(
+            ", once the spare relics on hand can fill the pity bar in {n} attempts or fewer (summoning until then)"
+        ),
+        None => String::new(),
+    };
     format!(
-        ". When nothing the quest needs is affordable, attempt {spare} instead of summoning, rolled for max glory + min despair and kept if it moves toward {}. {pity}",
-        bar_text(g, Some(d))
+        ". When nothing the quest needs is affordable, attempt {spare} instead of summoning{when}, played and kept as the quest's own rolls are (the pity is earned whatever it rolls). {pity}"
     )
 }
 
@@ -315,17 +325,35 @@ pub fn compare(game: &Game, runs: u64, seed: u64, max_level: usize) -> Result<St
 
 // ------------------------------------------------------------------ charts
 
-/// The reference drawn across the efficiency chart: (label, dmg multiplier,
-/// diamonds).
-pub const EFFICIENCY_REFERENCE: (&str, f64, f64) = ("19* Orr: 16% dmg for 156k dia", 1.1664, 156_700.0);
+/// A dotted line across the efficiency chart: damage bought some other way,
+/// to measure the level-ups against.
+pub struct Reference {
+    pub label: &'static str,
+    pub multiplier: f64,
+    pub diamonds: f64,
+    /// the colour class its line (`lv-{colour}`) and label (`lv-{colour}t`) wear
+    pub colour: &'static str,
+    /// whether its label starts from the line's left end rather than its right
+    pub label_left: bool,
+}
+
+/// The references drawn across the efficiency chart.
+pub const EFFICIENCY_REFERENCES: [Reference; 2] = [
+    Reference { label: "19* Orr: 16% dmg for 156k dia", multiplier: 1.1664, diamonds: 156_700.0, colour: "gold", label_left: false },
+    Reference { label: "25* Orr: 16% dmg for 251k dia", multiplier: 1.1598, diamonds: 250_509.8659, colour: "cyan", label_left: true },
+];
+
+/// The diamonds between labels on the cost chart's x axis.
+pub const COST_TICK: f64 = 250_000.0;
 
 /// How far above the reference the efficiency chart goes; anything higher
-/// is pinned to the top edge with its value.
-pub const EFFICIENCY_CAP: f64 = 10.0;
+/// (the odd level-up that comes almost free) is pinned to the top edge with
+/// its value.
+pub const EFFICIENCY_CAP: f64 = 2.0;
 
-/// The efficiency chart starts here; the first few level-ups are so cheap
+/// The efficiency chart starts here; the level-ups before it are so cheap
 /// they dwarf everything after them.
-pub const EFFICIENCY_FROM: usize = 7;
+pub const EFFICIENCY_FROM: usize = 5;
 
 /// Damage bought per diamond: ln(dmg multiplier) per million diamonds.
 pub fn efficiency(multiplier: f64, diamonds: f64) -> f64 {
@@ -358,19 +386,26 @@ const CHART_STYLE: &str = concat!(
     ".lv-bar{fill:#2a78d6;stroke:#ffffff;stroke-width:0.5}.lv-grid{stroke:#e1e0d9;stroke-width:1}",
     ".lv-axis{stroke:#c3c2b7;stroke-width:1;fill:none}.lv-ink{fill:#52514e}",
     ".lv-muted{fill:#898781}",
-    ".lv-eff{stroke:#7b3fb8;stroke-width:2;fill:none}.lv-effdot{fill:#7b3fb8}",
-    ".lv-ref{stroke:#e0b000;stroke-width:2;stroke-dasharray:5 4}.lv-reft{fill:#9a7700}",
+    ".lv-eff{stroke:#7b3fb8;stroke-width:2;fill:none}.lv-effdot{fill:#7b3fb8}.lv-efft{fill:#7b3fb8}",
+    ".lv-ref{stroke-width:2;stroke-dasharray:5 4}",
+    ".lv-gold{stroke:#e0b000}.lv-goldt{fill:#9a7700}.lv-cyan{stroke:#0e9fb3}.lv-cyant{fill:#087686}",
     ".lv-halo{paint-order:stroke;stroke:#ffffff;stroke-width:3px;stroke-linejoin:round}",
     ".lv-t{font:11px system-ui,-apple-system,'Segoe UI',sans-serif}",
     ".lv-s{font:10px system-ui,-apple-system,'Segoe UI',sans-serif}",
     ".lv-b{font:600 11px system-ui,-apple-system,'Segoe UI',sans-serif}",
+    ".lv-h{font:600 13px system-ui,-apple-system,'Segoe UI',sans-serif}",
     "@media(prefers-color-scheme:dark){",
     ".lv-bar{fill:#3987e5;stroke:#1f1f1e}.lv-grid{stroke:#2c2c2a}.lv-axis{stroke:#383835}",
-    ".lv-ink{fill:#c3c2b7}.lv-eff{stroke:#b287e8}.lv-effdot{fill:#b287e8}",
-    ".lv-ref{stroke:#f2c94c}.lv-reft{fill:#f2c94c}.lv-halo{stroke:#1f1f1e}}",
+    ".lv-ink{fill:#c3c2b7}.lv-eff{stroke:#b287e8}.lv-effdot{fill:#b287e8}.lv-efft{fill:#b287e8}",
+    ".lv-gold{stroke:#f2c94c}.lv-goldt{fill:#f2c94c}.lv-cyan{stroke:#3fc6d8}.lv-cyant{fill:#3fc6d8}",
+    ".lv-halo{stroke:#1f1f1e}}",
     "</style>"
 );
 
+/// How far below the plot the x-axis title sits.
+const AXIS_TITLE_DROP: f64 = 36.0;
+
+/// Opens a chart with its title written across the top.
 fn svg_open(width: usize, height: usize, title: &str, desc: &str) -> Vec<String> {
     vec![
         format!(
@@ -379,6 +414,7 @@ fn svg_open(width: usize, height: usize, title: &str, desc: &str) -> Vec<String>
         format!("<title>{title}</title>"),
         format!("<desc>{desc}</desc>"),
         CHART_STYLE.to_string(),
+        format!("<text class=\"lv-h lv-ink\" x=\"8\" y=\"18\">{title}</text>"),
     ]
 }
 
@@ -404,8 +440,10 @@ impl CostAxis {
         let second = if sorted.len() > 1 { sorted[sorted.len() - 2] } else { 0.0 };
         let broken = second > 0.0 && top > 1.5 * second;
         let span = if broken { second } else { top };
-        let step = nice_step(span * 1.04, 5.0);
-        let a_max = step * (span * 1.04 / step).ceil();
+        let step = COST_TICK;
+        // broken, the axis stops just past the last bar before the break;
+        // whole, it runs on to the next tick
+        let a_max = if broken { span * 1.02 } else { step * (span * 1.04 / step).ceil() };
         if broken {
             let a_width = width - Self::GAP - Self::FAR_WIDTH;
             let gap_start = left + a_width;
@@ -440,7 +478,7 @@ impl CostAxis {
 /// diamonds, as tall as its total damage increase on a log axis.
 pub fn cost_chart_svg(rows: &[Row], title: &str) -> String {
     let data = &rows[1..];
-    let (ml, mr, mt, mb) = (58.0, 20.0, 40.0, 44.0);
+    let (ml, mr, mt, mb) = (58.0, 20.0, 56.0, 44.0);
     let (plot_w, plot_h) = (620.0, 250.0);
     let (width, height) = (ml + plot_w + mr, mt + plot_h + mb);
     let base_y = mt + plot_h;
@@ -480,7 +518,7 @@ pub fn cost_chart_svg(rows: &[Row], title: &str) -> String {
         }
     }
     out.push(format!(
-        "<text class=\"lv-t lv-muted\" x=\"{}\" y=\"{}\" text-anchor=\"end\">log dmg</text>",
+        "<text class=\"lv-t lv-muted\" x=\"{}\" y=\"{}\" text-anchor=\"end\">dmg</text>",
         ml - 8.0,
         mt - 12.0
     ));
@@ -526,9 +564,9 @@ pub fn cost_chart_svg(rows: &[Row], title: &str) -> String {
         ));
     }
     out.push(format!(
-        "<text class=\"lv-t lv-muted\" x=\"{:.1}\" y=\"{}\" text-anchor=\"middle\">average diamonds spent{}</text>",
+        "<text class=\"lv-t lv-muted\" x=\"{:.1}\" y=\"{}\" text-anchor=\"middle\">total diamonds spent{}</text>",
         ml + plot_w / 2.0,
-        height - 8.0,
+        base_y + AXIS_TITLE_DROP,
         if axis.far.is_some() { " (axis broken before the last bar)" } else { "" }
     ));
 
@@ -558,13 +596,10 @@ pub fn cost_chart_svg(rows: &[Row], title: &str) -> String {
     out.join("\n")
 }
 
-/// What row `i`'s marginal columns are measured from: the level before it,
-/// or for a tier (its own farm from the top level) that top level.
+/// What row `i`'s marginal columns are measured from: the row before it (a
+/// tier's, the tier before it, or level 20 for the first).
 fn before(rows: &[Row], i: usize) -> Option<&Row> {
-    match rows[i].tier {
-        Some(_) => rows[..i].iter().rev().find(|r| r.tier.is_none()),
-        None => i.checked_sub(1).map(|p| &rows[p]),
-    }
+    i.checked_sub(1).map(|p| &rows[p])
 }
 
 /// Chart 2: each level-up's (or tier's) efficiency - ln of the damage it adds
@@ -579,16 +614,17 @@ pub fn efficiency_chart_svg(rows: &[Row], title: &str) -> String {
             (cost > 0.0).then(|| (&rows[i], p, efficiency(rows[i].damage / p.damage, cost)))
         })
         .collect();
-    let (label, ref_mult, ref_cost) = EFFICIENCY_REFERENCE;
-    let reference = efficiency(ref_mult, ref_cost);
+    let references: Vec<(&Reference, f64)> =
+        EFFICIENCY_REFERENCES.iter().map(|r| (r, efficiency(r.multiplier, r.diamonds))).collect();
+    let reference = references.iter().map(|r| r.1).fold(0.0, f64::max);
 
-    let (ml, mr, mt, mb) = (58.0, 20.0, 40.0, 44.0);
+    let (ml, mr, mt, mb) = (58.0, 20.0, 56.0, 44.0);
     let pitch = 34.0;
     let (plot_w, plot_h) = (pitch * points.len() as f64, 230.0);
     let (width, height) = (ml + plot_w + mr, mt + plot_h + mb);
     let base_y = mt + plot_h;
     // a level-up paid for out of banked stock can be a hundred times the rest;
-    // past EFFICIENCY_CAP x the reference a point is pinned to the top
+    // past EFFICIENCY_CAP x the highest reference a point is pinned to the top
     let top = points.iter().map(|p| p.2).fold(reference, f64::max).min(EFFICIENCY_CAP * reference) * 1.08;
     let step = nice_step(top, 4.0);
     let y_top = step * (top / step).ceil();
@@ -596,10 +632,12 @@ pub fn efficiency_chart_svg(rows: &[Row], title: &str) -> String {
     let y_of = |e: f64| mt + plot_h * (1.0 - e.min(y_top) / y_top);
 
     let best = points.iter().max_by(|a, b| a.2.total_cmp(&b.2)).expect("at least one level-up");
+    let refs_text: Vec<String> = references.iter().map(|(r, e)| format!("{} at {e:.2}", r.label)).collect();
     let desc = format!(
-        "Efficiency of each level-up: ln of the damage it adds per million diamonds. Best: {} at {:.2}; the reference line, {label}, is {reference:.2}.",
+        "Efficiency of each level-up: ln of the damage it adds per million diamonds. Best: {} at {:.2}; the reference lines: {}.",
         best.0.name(),
-        best.2
+        best.2,
+        refs_text.join(", ")
     );
     let mut out = svg_open(width as usize, height as usize, title, &desc);
 
@@ -619,7 +657,7 @@ pub fn efficiency_chart_svg(rows: &[Row], title: &str) -> String {
         v += step;
     }
     out.push(format!(
-        "<text class=\"lv-t lv-muted\" x=\"{}\" y=\"{}\">ln(dmg multiplier) per 1M diamonds</text>",
+        "<text class=\"lv-t lv-muted\" x=\"{}\" y=\"{}\">ln(marginal dmg multiplier) per 1M marginal diamonds</text>",
         ml - 50.0,
         mt - 22.0
     ));
@@ -628,20 +666,38 @@ pub fn efficiency_chart_svg(rows: &[Row], title: &str) -> String {
         ml + plot_w
     ));
 
-    // the reference, dotted, labelled above its left end
-    let ry = y_of(reference);
-    out.push(format!(
-        "<line class=\"lv-ref\" x1=\"{ml}\" y1=\"{ry:.1}\" x2=\"{:.1}\" y2=\"{ry:.1}\"/>",
-        ml + plot_w
-    ));
-    out.push(format!(
-        "<text class=\"lv-b lv-reft lv-halo\" x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"end\">{label}</text>",
-        ml + plot_w - 6.0,
-        ry - 6.0
-    ));
+    // the references, dotted, each labelled above or below its line wherever
+    // the label covers the least of the data; the labels go on top of the
+    // line, so they stay legible where nowhere is clear
+    let dots: Vec<(f64, f64)> = points.iter().enumerate().map(|(i, p)| (x_mid(i), y_of(p.2))).collect();
+    let mut taken: Vec<(f64, f64, f64, f64)> = Vec::new();
+    let mut labels = Vec::new();
+    for (r, e) in &references {
+        let ry = y_of(*e);
+        out.push(format!(
+            "<line class=\"lv-ref lv-{}\" x1=\"{ml}\" y1=\"{ry:.1}\" x2=\"{:.1}\" y2=\"{ry:.1}\"/>",
+            r.colour,
+            ml + plot_w
+        ));
+        let text_w = label_width(r.label);
+        let (x0, y) = place_label(
+            &dots,
+            &taken,
+            text_w,
+            &[ry - 6.0, ry + 15.0],
+            (ml + 6.0, ml + plot_w - 6.0),
+            (mt, base_y),
+            r.label_left,
+        );
+        taken.push((x0, y - 11.0, x0 + text_w, y + 2.0));
+        let (x, anchor) = if r.label_left { (x0, "start") } else { (x0 + text_w, "end") };
+        labels.push(format!(
+            "<text class=\"lv-b lv-{}t lv-halo\" x=\"{x:.1}\" y=\"{y:.1}\" text-anchor=\"{anchor}\">{}</text>",
+            r.colour, r.label
+        ));
+    }
 
-    let line: Vec<String> =
-        points.iter().enumerate().map(|(i, p)| format!("{:.1},{:.1}", x_mid(i), y_of(p.2))).collect();
+    let line: Vec<String> = dots.iter().map(|(x, y)| format!("{x:.1},{y:.1}")).collect();
     out.push(format!("<polyline class=\"lv-eff\" points=\"{}\"/>", line.join(" ")));
     for (i, (r, p, e)) in points.iter().enumerate() {
         out.push(format!(
@@ -660,23 +716,98 @@ pub fn efficiency_chart_svg(rows: &[Row], title: &str) -> String {
         ));
         if *e > y_top {
             out.push(format!(
-                "<text class=\"lv-s lv-ink lv-halo\" x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"middle\">↑{e:.0}</text>",
+                "<text class=\"lv-s lv-ink lv-halo\" x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"middle\">↑{}</text>",
                 x_mid(i),
-                mt - 5.0
+                mt - 5.0,
+                if *e < 10.0 { format!("{e:.1}") } else { format!("{e:.0}") }
             ));
         }
     }
+    out.extend(labels);
+    // the line's own name, along the bottom, as far right as it can go
+    // while covering the least of the line
+    let text_w = label_width(SERIES_LABEL);
+    let (x0, y) =
+        place_label(&dots, &taken, text_w, &[base_y - 8.0], (ml + 6.0, ml + plot_w - 6.0), (mt, base_y), false);
+    let x = x0 + text_w;
+    out.push(format!(
+        "<text class=\"lv-b lv-efft lv-halo\" x=\"{x:.1}\" y=\"{y:.1}\" text-anchor=\"end\">{SERIES_LABEL}</text>"
+    ));
     let x_title = match rows.iter().find(|r| r.tier.is_some()) {
-        Some(r) => format!("inheritor level reached, then crit relic amplification at level {}", r.level),
+        Some(r) => format!(
+            "inheritor level reached, then crit relic amplification at level {} (all relics converted to crit)",
+            r.level
+        ),
         None => "inheritor level reached".to_string(),
     };
     out.push(format!(
         "<text class=\"lv-t lv-muted\" x=\"{:.1}\" y=\"{}\" text-anchor=\"middle\">{x_title}</text>",
         ml + plot_w / 2.0,
-        height - 8.0
+        base_y + AXIS_TITLE_DROP
     ));
     out.push("</svg>".to_string());
     out.join("\n")
+}
+
+/// What the efficiency chart's line is.
+const SERIES_LABEL: &str = "Relic Inheritance by level";
+
+/// About how wide a bold 11px label is.
+fn label_width(text: &str) -> f64 {
+    6.3 * text.chars().count() as f64
+}
+
+/// Where a label `w` wide goes, as its left edge and baseline: on one of the
+/// baselines `ys`, slid in from the `left` end (or the `right`, unless
+/// `from_left`), wherever it covers the least of the line through `dots`
+/// (ties go to the spot nearest that end, then the first baseline), inside
+/// the plot (top, bottom) and off the labels already `taken`.
+fn place_label(
+    dots: &[(f64, f64)],
+    taken: &[(f64, f64, f64, f64)],
+    w: f64,
+    ys: &[f64],
+    (left, right): (f64, f64),
+    (top, bottom): (f64, f64),
+    from_left: bool,
+) -> (f64, f64) {
+    let start = if from_left { left } else { right - w };
+    let mut best = ((start, ys[0]), usize::MAX);
+    let ys: Vec<f64> = ys.iter().copied().filter(|&y| y - 10.0 >= top && y + 2.0 <= bottom).collect();
+    let mut k = 0.0;
+    while best.1 > 0 {
+        let x0 = if from_left { left + 6.0 * k } else { right - w - 6.0 * k };
+        if x0 < left || x0 + w > right {
+            break;
+        }
+        for &y in &ys {
+            let b = (x0 - 4.0, y - 13.0, x0 + w + 4.0, y + 6.0);
+            if !taken.iter().any(|t| t.0 < b.2 && b.0 < t.2 && t.1 < b.3 && b.1 < t.3) {
+                let hits = line_hits(dots, b);
+                if hits < best.1 {
+                    best = ((x0, y), hits);
+                }
+            }
+        }
+        k += 1.0;
+    }
+    best.0
+}
+
+/// How much of the polyline through `dots` falls in the box (x0, y0, x1, y1):
+/// its dots, and points every couple of pixels along each segment.
+fn line_hits(dots: &[(f64, f64)], (x0, y0, x1, y1): (f64, f64, f64, f64)) -> usize {
+    let inside = |(x, y): (f64, f64)| x0 <= x && x <= x1 && y0 <= y && y <= y1;
+    let along = dots.windows(2).map(|w| {
+        let ((ax, ay), (bx, by)) = (w[0], w[1]);
+        let steps = ((bx - ax).hypot(by - ay) / 2.0).ceil().max(1.0) as usize;
+        (0..=steps).filter(|&k| {
+            let t = k as f64 / steps as f64;
+            inside((ax + (bx - ax) * t, ay + (by - ay) * t))
+        })
+        .count()
+    });
+    dots.iter().filter(|&&d| inside(d)).count() + along.sum::<usize>()
 }
 
 // ------------------------------------------------------------------ LEVELS.md
@@ -727,12 +858,7 @@ fn attempt_table() -> Vec<String> {
 pub fn target_rows(game: &Game, runs: u64, seed: u64) -> Result<Vec<Row>, String> {
     let mut rows = Vec::new();
     for (target, plan) in lookahead_plans()? {
-        let mut options = target.options();
-        if target.level == MAX_LEVEL && target.tier.is_none() {
-            // the top level spends its leftovers, exactly as the tiers' runs do
-            options = options.with_tiers(&GREEDY_TIERS[..1]);
-        }
-        let result = level_rows(game, &plan, runs, seed, &options)?;
+        let result = level_rows(game, &plan, runs, seed, &target.options())?;
         if rows.is_empty() {
             rows.push(result[0].clone());
         }
@@ -745,31 +871,6 @@ pub fn target_rows(game: &Game, runs: u64, seed: u64) -> Result<Vec<Row>, String
 /// Wraps a markdown table so it renders in smaller type and fits the screen;
 /// the blank line after it lets the table inside still parse as markdown.
 const SMALL_TABLE: &str = "<div style=\"font-size:0.72em\">";
-
-/// (plan, heading, blurb) for each mode LEVELS.md covers.
-fn doc_modes() -> [(&'static str, &'static str, String); 2] {
-    [
-        (
-            "greedy",
-            "Greedy mode",
-            format!(
-                "Every level-up made as cheap as it can be on its own, ignoring later levels. Past level {MAX_LEVEL} it keeps going: {} more tiers farming the {} crit relic to {}, with every other relic converted into it ({CONVERT_FROM} of one type for {CONVERT_TO}). On reaching level {MAX_LEVEL} the relics left over from the climb are converted and spent on the crit relic straight away, so the level {MAX_LEVEL} row's crit amp includes them. Each tier is then a separate farm from the same level-{MAX_LEVEL} runs, played for its own mark, so a tier's diamonds are level {MAX_LEVEL} plus that farm alone.",
-                tiers("greedy").len(),
-                RELICS[CRIT],
-                tier_list(tiers("greedy"))
-            ),
-        ),
-        (
-            "lookahead",
-            "Look-ahead mode",
-            format!(
-                "Every row is its own look-ahead: a plan searched for the cheapest route to that row alone - that level, or level {MAX_LEVEL} plus that crit relic tier - where some levels cost more so later ones cost less. Each row is simulated with its own plan and only its own result is shown, so neighbouring rows can come from different plans. The tiers are greedy's ({}): the plan for a tier is searched on the whole cost, climb and farm together, and its farm plays every attempt for that tier's mark with every other relic converted into the crit relic. As in greedy mode, the relics left over at level {MAX_LEVEL} are spent on the crit relic, played for {}%.",
-                tier_list(&GREEDY_TIERS),
-                GREEDY_TIERS[0]
-            ),
-        ),
-    ]
-}
 
 /// LEVELS.md, generated end to end from the simulation.
 pub fn markdown(runs: u64, seed: u64) -> Result<String, String> {
@@ -784,73 +885,65 @@ pub fn markdown(runs: u64, seed: u64) -> Result<String, String> {
             commas(DIAMONDS_PER_SUMMON as f64, 0)
         ),
         String::new(),
-        "dmg increase = (1 + level multiplier) x (1 + 4/5 x crit amp) x (1 + 22/209 x atk amp) - 1, where the level multiplier is +5% a level for levels 2-7, +10% for 8-15, +15% for 16-19 and +20% for 20. Marginal columns are relative to the level before; a crit relic tier's are relative to level 20, where its farm starts.".to_string(),
+        "dmg increase = (1 + level multiplier) x (1 + 4/5 x crit amp) x (1 + 22/209 x atk amp) - 1, where the level multiplier is +5% a level for levels 2-7, +10% for 8-15, +15% for 16-19 and +20% for 20. Marginal columns are relative to the row before: marginal dmg increase is (1 + this row's dmg increase) / (1 + the row before's) - 1.".to_string(),
     ];
-    let mut mode_rows = Vec::new();
-    for (name, title, blurb) in doc_modes() {
-        let rows = match name {
-            "lookahead" => target_rows(game, runs, seed)?,
-            _ => {
-                let plan = strategy(name).expect("a named plan");
-                level_rows(game, &plan, runs, seed, &RunOptions::default().with_tiers(tiers(name)))?
-            }
-        };
-        out.extend([
-            String::new(),
-            format!("## {title}"),
-            String::new(),
-            format!("{blurb} {} simulations.", commas(runs as f64, 0)),
-            String::new(),
-            SMALL_TABLE.to_string(),
-            String::new(),
-            "| level | requirement (glory/despair) | average diamonds | marginal diamonds | reached by pity | crit relic amp | atk relic amp | dmg increase | marginal dmg increase |".to_string(),
-            "|---|---|---|---|---|---|---|---|---|".to_string(),
-        ]);
-        for (i, r) in rows.iter().enumerate() {
-            let (step, pity, more) = match before(&rows, i) {
-                None => ("-".to_string(), "-".to_string(), "-".to_string()),
-                Some(p) => (
-                    human(r.mean - p.mean),
-                    if r.tier.is_some() { "-".to_string() } else { pct(r.pity, 0) },
-                    format!("+{}", pct(r.damage / p.damage - 1.0, 1)),
-                ),
-            };
-            out.push(format!(
-                "| **{}** | {} | {} | {step} | {pity} | {:.2}% | {:.2}% | +{} | {more} |",
-                r.label(),
-                r.short,
-                commas(r.mean, 0),
-                r.crit_amp,
-                r.atk_amp,
-                pct(r.damage - 1.0, 1)
-            ));
-        }
-        out.extend([String::new(), "</div>".to_string()]);
-        // side by side where there is room, stacked where there is not
-        out.extend([
-            String::new(),
-            "<div style=\"display:flex;flex-wrap:wrap;gap:12px\">".to_string(),
-            cost_chart_svg(&rows, &format!("{title}: damage for diamonds")),
-            efficiency_chart_svg(&rows, &format!("{title}: efficiency of each level-up")),
-            "</div>".to_string(),
-            String::new(),
-            format!(
-                "<sub>Left: each bar stands at a level's average total diamonds and is as tall as its damage increase (log scale). Right: efficiency, ln(1 + marginal dmg increase) per million marginal diamonds{}; the dotted line is {} (ln({}) per {} diamonds).</sub>",
-                if rows.iter().all(|r| r.tier.is_none()) { "" } else { ", a tier measured from level 20" },
-                EFFICIENCY_REFERENCE.0,
-                EFFICIENCY_REFERENCE.1,
-                commas(EFFICIENCY_REFERENCE.2, 0)
+    let rows = target_rows(game, runs, seed)?;
+    let title = "Look-ahead plans";
+    let blurb = format!(
+        "Every row is its own look-ahead: a plan searched for the cheapest route to that row alone - that level, or level {MAX_LEVEL} plus that crit relic tier ({}) - and every attempt on the way closes the gap to its level's totals - or, where the plan says so (a), to the totals ahead: the most glory and the least despair any level up to the goal asks - then goes for more glory and less despair, weighed as those totals still need them (a relic held to a bar plays for the bar first, then the goal's totals or the totals ahead). Each row is simulated with its own plan and only its own result is shown, so neighbouring rows can come from different plans. A tier's plan is searched on the whole cost, climb and farm together: on reaching level {MAX_LEVEL} the relics left over are converted into the {} crit relic ({CONVERT_FROM} of one type for {CONVERT_TO}) and spent on it, then it is farmed, every attempt played for the best chance of the tier's mark.",
+        tier_list(&CRIT_TIERS),
+        RELICS[CRIT]
+    );
+    out.extend([
+        String::new(),
+        format!("## {title}"),
+        String::new(),
+        format!("{blurb} {} simulations.", commas(runs as f64, 0)),
+        String::new(),
+        SMALL_TABLE.to_string(),
+        String::new(),
+        "| level | requirement (glory/despair) | total diamonds | marginal diamonds | reached by pity | crit relic amp | atk relic amp | dmg increase | marginal dmg increase |".to_string(),
+        "|---|---|---|---|---|---|---|---|---|".to_string(),
+    ]);
+    for (i, r) in rows.iter().enumerate() {
+        let (step, pity, more) = match before(&rows, i) {
+            None => ("-".to_string(), "-".to_string(), "-".to_string()),
+            Some(p) => (
+                commas(r.mean - p.mean, 0),
+                if r.tier.is_some() { "-".to_string() } else { pct(r.pity, 0) },
+                format!("+{}", pct(r.damage / p.damage - 1.0, 1)),
             ),
-        ]);
-        mode_rows.push(rows);
+        };
+        out.push(format!(
+            "| **{}** | {} | {} | {step} | {pity} | {:.2}% | {:.2}% | +{} | {more} |",
+            r.label(),
+            r.short,
+            commas(r.mean, 0),
+            r.crit_amp,
+            r.atk_amp,
+            pct(r.damage - 1.0, 1)
+        ));
     }
+    out.extend([String::new(), "</div>".to_string()]);
+    // side by side where there is room, stacked where there is not
+    out.extend([
+        String::new(),
+        "<div style=\"display:flex;flex-wrap:wrap;gap:12px\">".to_string(),
+        cost_chart_svg(&rows, "Damage vs Cost"),
+        efficiency_chart_svg(&rows, "Level Efficiency"),
+        "</div>".to_string(),
+        String::new(),
+        format!(
+            "<sub>Left: each bar stands at a level's total diamonds and is as tall as its damage increase (log scale). Right: efficiency, ln(1 + marginal dmg increase) per million marginal diamonds; the dotted lines are {}.</sub>",
+            EFFICIENCY_REFERENCES
+                .iter()
+                .map(|r| format!("{} (ln({}) per {} diamonds)", r.label, r.multiplier, commas(r.diamonds, 0)))
+                .collect::<Vec<_>>()
+                .join(" and ")
+        ),
+    ]);
     out.extend(attempt_table());
-    // the look-ahead comparison is about the climb, not greedy's tiers
-    // what look-ahead does differently is told from the level-20 plan's own
-    // climb, level by level
-    let look = strategy("lookahead").expect("a named plan");
-    let look_rows = level_rows(game, &look, runs, seed, &RunOptions::default())?;
-    out.extend(strategy_sections(game, &mode_rows[0][..MAX_LEVEL], &look_rows));
+    out.extend(strategy_sections(game));
     Ok(out.join("\n") + "\n")
 }
 
@@ -863,7 +956,8 @@ fn step_parts(game: &Game, plan: &Plan, level: usize) -> (String, String) {
         _ => DEFAULT_PROFILE,
     };
     let mut play = match game.quests[level].as_ref().expect("a real level") {
-        Quest::Relics { .. } => "roll the named relics to their bar, all-or-nothing".to_string(),
+        Quest::Relics { .. } if s.ahead => "roll the named relics for the best chance of their bar, then the totals ahead".to_string(),
+        Quest::Relics { .. } => "roll the named relics for the best chance of their bar, then the goal's totals".to_string(),
         Quest::Each(bar) => {
             let despair = bar.despair.map_or(pd, |d| d.min(pd));
             format!("roll every short relic to {}", bar_text(bar.glory.max(pg), Some(despair)))
@@ -872,17 +966,22 @@ fn step_parts(game: &Game, plan: &Plan, level: usize) -> (String, String) {
         Quest::Total { .. } => format!("build relics to {}", bar_text(pg, Some(pd))),
     };
     if !matches!(game.quests[level], Some(Quest::Relics { .. })) {
-        play += if s.score { ", max glory + min despair" } else { ", all-or-nothing" };
-        if s.closer {
-            play += ", keeping gap-closers";
-        }
+        play += match (matches!(game.quests[level], Some(Quest::Total { .. })), s.ahead) {
+            (true, true) => ", closing the gap to the totals ahead",
+            (true, false) => ", closing the gap",
+            (false, true) => ", then the totals ahead",
+            (false, false) => ", then the goal's totals",
+        };
     }
     if let Some((next, _)) = game.next_named(level).filter(|_| plan.protected(game, level) != 0) {
         play += &format!(", with {} kept back for level {next}", names(plan.protected(game, level)));
     }
-    let stuck = match s.filler {
-        Some((g, d)) => format!("spare relics go to pity (kept if they reach {})", bar_text(g, Some(d))),
-        None => "summon, keeping spare relics".to_string(),
+    let stuck = match (s.filler, s.filler_within) {
+        (true, Some(n)) => {
+            format!("summon, unless the spare relics can fill the pity bar within {n} attempts: then they go to pity")
+        }
+        (true, None) => "spare relics go to pity".to_string(),
+        (false, _) => "summon, keeping spare relics".to_string(),
     };
     (play, stuck)
 }
@@ -899,10 +998,9 @@ fn tier_list(marks: &[u8]) -> String {
 /// How the crit relic tiers past the top level are played.
 fn tier_steps(marks: &[u8]) -> String {
     format!(
-        "- **Past level {MAX_LEVEL}, tiers {}:** the moment level {MAX_LEVEL} is reached, convert every leftover relic into crit relics ({CONVERT_FROM} of one type for {CONVERT_TO}) and spend them all on the {}, played for {}%, without summoning more - the level {MAX_LEVEL} row includes this. Then each tier is its own farm from there: keep converting as soon as a type reaches {CONVERT_FROM}, attempt the crit relic, summoning when short, and play every attempt all-or-nothing for the tier's own mark. A result is kept only if it raises the relic's amplification.",
+        "- **Past level {MAX_LEVEL}, tiers {}:** the level {MAX_LEVEL} row converts every leftover relic into crit relics ({CONVERT_FROM} of one type for {CONVERT_TO}) the moment level {MAX_LEVEL} is reached and spends them all on the {}, without summoning more, every attempt played to maximize amplification above the relic's current. Each tier is its own farm from the moment level {MAX_LEVEL} is reached: convert the leftovers, and keep converting as soon as a type reaches {CONVERT_FROM}, attempt the crit relic, summoning when short, and play every attempt to maximize amplification above a target - the tier's own mark as the Minimum Useful Amplification. A result is kept only if it raises the relic's amplification.",
         tier_list(marks),
         RELICS[CRIT],
-        marks.first().map_or(0, |&m| m)
     )
 }
 
@@ -927,118 +1025,25 @@ fn grouped_steps(game: &Game, plan: &Plan) -> Vec<String> {
         .collect()
 }
 
-/// The level-ups a plan pays for, from its summary rows (index = level - 1).
-fn step_costs(rows: &[Row]) -> Vec<f64> {
-    std::iter::once(0.0).chain(rows.windows(2).map(|p| p[1].mean - p[0].mean)).collect()
-}
-
-/// What look-ahead does that greedy does not, worked out from the two plans
-/// and what each level-up cost them.
-fn lookahead_highlights(
-    game: &Game,
-    greedy: &Plan,
-    look: &Plan,
-    g_rows: &[Row],
-    l_rows: &[Row],
-) -> Vec<String> {
-    let mut out = Vec::new();
-    let join = |levels: &[usize]| levels.iter().map(ToString::to_string).collect::<Vec<_>>().join(", ");
-    let levels = 2..=MAX_LEVEL;
-
-    let kept: Vec<usize> = levels
-        .clone()
-        .filter(|&l| greedy.step(l).filler.is_some() && look.step(l).filler.is_none())
-        .collect();
-    if !kept.is_empty() {
-        out.push(format!(
-            "- **Keeps its spare relics instead of spending them on pity** at levels {}. When nothing the quest needs is affordable it summons rather than burning the relics it does not need yet, and that stock pays for the levels that follow.",
-            join(&kept)
-        ));
-    }
-
-    let banked: Vec<(usize, usize, RelicSet)> = levels
-        .clone()
-        .filter_map(|l| {
-            let set = look.protected(game, l);
-            game.next_named(l).filter(|_| set != 0).map(|(next, _)| (l, next, set))
-        })
-        .collect();
-    for &(_, next, set) in banked.iter().take(1) {
-        let during: Vec<usize> = banked.iter().filter(|b| b.1 == next && b.2 == set).map(|b| b.0).collect();
-        out.push(format!(
-            "- **Saves {} for level {next}**, keeping them out of the work at level{} {}.",
-            names(set),
-            if during.len() > 1 { "s" } else { "" },
-            join(&during)
-        ));
-    }
-
-    let (g_steps, l_steps) = (step_costs(g_rows), step_costs(l_rows));
-    let mut diffs: Vec<(usize, f64)> = levels.clone().map(|l| (l, l_steps[l - 1] - g_steps[l - 1])).collect();
-    diffs.sort_by(|a, b| b.1.total_cmp(&a.1));
-    let cost = |&(l, _): &(usize, f64)| {
-        format!("level {l} ({} vs {})", human(l_steps[l - 1]), human(g_steps[l - 1]))
-    };
-    let dearer: Vec<String> = diffs.iter().filter(|d| d.1 > 0.0).take(3).map(cost).collect();
-    let cheaper: Vec<String> = diffs.iter().rev().filter(|d| d.1 < 0.0).take(3).map(cost).collect();
-    if !dearer.is_empty() && !cheaper.is_empty() {
-        out.push(format!(
-            "- **Pays more up front** at {} - look-ahead first, greedy second - **and gets it back** at {}.",
-            dearer.join(", "),
-            cheaper.join(", ")
-        ));
-    }
-
-    for l in levels {
-        let (g_play, _) = step_parts(game, greedy, l);
-        let (l_play, _) = step_parts(game, look, l);
-        if g_play != l_play {
-            out.push(format!("- **Level {l}:** {l_play} (greedy: {g_play})."));
-        }
-    }
-
-    let (g_total, l_total) = (g_rows[g_rows.len() - 1].mean, l_rows[l_rows.len() - 1].mean);
-    out.push(format!(
-        "- **Reaches level {MAX_LEVEL} for {}** against greedy's {}, {} less.",
-        human(l_total),
-        human(g_total),
-        pct(1.0 - l_total / g_total, 0)
-    ));
-    out
-}
-
-/// How each mode plays the climb, level by level but grouped, with what
-/// look-ahead does differently up front.
-fn strategy_sections(game: &Game, g_rows: &[Row], l_rows: &[Row]) -> Vec<String> {
-    let greedy = strategy("greedy").expect("a named plan");
+/// How the level-20 plan plays the climb, level by level but grouped, and
+/// the tier farm past it.
+fn strategy_sections(game: &Game) -> Vec<String> {
     let look = strategy("lookahead").expect("a named plan");
     let mut out = vec![
         String::new(),
         "## Strategy".to_string(),
         String::new(),
-        format!("On every step, both modes: {HABITS}."),
+        format!("On every step: {HABITS}."),
         String::new(),
         format!(
-            "Pity: a level also comes free once its meter fills - 500 for level 2, 500 more each level ({} for level {MAX_LEVEL}) - at +100 an attempt on levels 1-3, +120 on 4-7, +140 on 8-11, +160 on 12-15 and +180 on 16-19. The meter empties at every level-up.",
+            "Pity: a level also comes free once its meter fills - 500 for level 2, 500 more each level ({} for level {MAX_LEVEL}) - at +100 an attempt on levels 1-3, +120 on 4-7, +140 on 8-11, +160 on 12-15 and +180 on 16-19. The meter empties at every level-up, and an attempt earns its pity whatever it rolls.",
             commas(f64::from(pity_needed(MAX_LEVEL)), 0)
         ),
         String::new(),
-        "### Greedy mode".to_string(),
-        String::new(),
-        "Each level-up as cheap as it can be on its own:".to_string(),
+        format!("Every row of the look-ahead table has its own plan (all saved in `engine/src/levels/lookahead_plans.txt`); this is the one for level {MAX_LEVEL}, level by level:"),
         String::new(),
     ];
-    out.extend(grouped_steps(game, &greedy));
-    out.push(tier_steps(tiers("greedy")));
-    out.extend([
-        String::new(),
-        "### Look-ahead mode".to_string(),
-        String::new(),
-        format!("Every row of the look-ahead table has its own plan (all saved in `engine/src/levels/lookahead_plans.txt`); this is the one for level {MAX_LEVEL}. What it does differently from greedy:"),
-        String::new(),
-    ]);
-    out.extend(lookahead_highlights(game, &greedy, &look, g_rows, l_rows));
-    out.extend([String::new(), "Level by level:".to_string(), String::new()]);
     out.extend(grouped_steps(game, &look));
+    out.push(tier_steps(&CRIT_TIERS));
     out
 }

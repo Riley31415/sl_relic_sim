@@ -12,7 +12,7 @@
 use std::cell::RefCell;
 
 use relic::levels::{self, Advice, Game, Move, N_RELICS, Next, TableKey, Target};
-use relic::solver::{Action, Choice, Config, Solver, State, Strategy, TIERS};
+use relic::solver::{Action, Choice, Config, Objective, Solver, State, Strategy, TIERS};
 
 thread_local! {
     static SOLVER: RefCell<Option<Solver>> = const { RefCell::new(None) };
@@ -58,23 +58,45 @@ pub extern "C" fn tier_percent(tier: u32) -> u32 {
     TIERS.get(tier as usize).map_or(0, |p| (p * 100.0).round() as u32)
 }
 
+/// A tie weight from JavaScript, at most 10.
+fn on_board_tie(v: u32) -> u8 {
+    u8::try_from(v.min(10)).expect("at most 10")
+}
+
 /// Set the board and objective every later query is answered for.
 ///
-/// `kind` 0: most amplification (+5% a glory success, -2% a despair success);
-/// 1: all or nothing for >= `a` glory and <= `b` despair successes (`b` past
-/// the slots: any despair);
-/// 2: all or nothing for an amplification of at least `a`%;
-/// 3: a score of `wa` a glory success plus `wb` a despair slot left clean.
+/// `kind` 0: max amplification above a mark (+5% a glory success, -2% a
+/// despair success): the best chance of `a`% or more, then the most
+/// amplification, a result kept only above the memory (`fg`, `fd`) - `a` 0
+/// for "just above the memory";
+/// 1: close the gap to >= `a` glory and <= `b` despair successes (`b` past
+/// the slots: any despair) from the memory (`fg`, `fd`) - every glory gained
+/// or despair shed counts, a result closing none counts nothing - then more
+/// glory, less despair, weighed `c` : `d` (0 : 0 for 1 : 1);
+/// 2: the best chance of `a`+ glory / `b`- despair, then closing the gap to
+/// (`c`, `d`) from the memory (255, 0: every slot a glory, no despair), then
+/// more glory, less despair.
+/// A memory not known is given as (0, 255): as far off as can be (for kind
+/// 0: none, any finished result counts).
 /// `wipe_penalty` charges a wipe extra (0 is the plain optimum).
 /// Returns 0, or -1 for a level or kind that does not exist.
 #[unsafe(no_mangle)]
-pub extern "C" fn configure(level: u32, kind: u32, a: u32, b: u32, wa: f64, wb: f64, wipe_penalty: f64) -> i32 {
-    let narrow = |v: u32| u8::try_from(v.min(255)).ok();
-    let strategy = match (kind, narrow(a), narrow(b)) {
-        (0, _, _) => Strategy::default(),
-        (1, Some(glory), Some(despair)) => Strategy::target(glory, despair),
-        (2, Some(mark), _) => Strategy::reach(mark),
-        (3, _, _) if wa.is_finite() && wb.is_finite() => Strategy::score(wa, wb),
+#[allow(clippy::too_many_arguments)]
+pub extern "C" fn configure(level: u32, kind: u32, a: u32, b: u32, c: u32, d: u32, fg: u32, fd: u32, wipe_penalty: f64) -> i32 {
+    let Ok(slots) = Config::for_level(i64::from(level), Strategy::default()).map(|c| c.slots) else { return -1 };
+    let on_board = |v: u32| u8::try_from(v.min(u32::from(slots))).expect("within the slots");
+    let from = (on_board(fg), on_board(fd));
+    let known = fd != 255;
+    let strategy = match kind {
+        0 => Strategy::above(u8::try_from(a.min(255)).expect("narrowed"), known.then_some(from)),
+        1 if (c, d) == (0, 0) => Strategy::close(on_board(a), on_board(b), from),
+        1 => Strategy::close(on_board(a), on_board(b), from).tie(on_board_tie(c), on_board_tie(d)),
+        2 => {
+            let Objective::Close { glory, despair, gap } = Strategy::close(on_board(c), on_board(d), from).objective else {
+                unreachable!("close makes Close")
+            };
+            Strategy::target(on_board(a), on_board(b)).then_close(glory, despair, gap)
+        }
         _ => return -1,
     };
     let Ok(mut cfg) = Config::for_level(i64::from(level), strategy) else { return -1 };
@@ -138,21 +160,23 @@ pub extern "C" fn finish_chance(gf: u32, gs: u32, df: u32, ds: u32, ms: u32, sp:
 // ---------------------------------------------------------------- advisor
 
 /// Exchange area for the advisor, shared with JavaScript (see `io`):
-/// in  [0..24) each relic's glory then despair, [24..36) each relic's stock;
-/// out [40..49) the advice (see `advise`).
+/// in  [0..24) each relic's glory then despair, [24..36) each relic's stock,
+/// [36] how full the pity bar is (per mille, -1 not known);
+/// out [40..52) the advice (see `advise`).
 static mut IO: [i32; 64] = [0; 64];
-/// out: a score key's weights (glory, clean despair)
-static mut IO_F: [f64; 2] = [0.0; 2];
 
-/// Where the exchange areas live in the module's memory.
+/// Where the exchange area lives in the module's memory.
 #[unsafe(no_mangle)]
 pub extern "C" fn io() -> *mut i32 {
     (&raw mut IO).cast::<i32>()
 }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn io_f() -> *mut f64 {
-    (&raw mut IO_F).cast::<f64>()
+/// How full the pity bar is, as JavaScript wrote it in io[36]: per mille,
+/// -1 if not known.
+fn pity_in() -> Option<u32> {
+    // SAFETY: as in `board_in`
+    let io = unsafe { &*(&raw const IO) };
+    u32::try_from(io[36]).ok().map(|p| p.min(1000))
 }
 
 /// The board JavaScript wrote: every relic's (glory, despair), and stock.
@@ -174,45 +198,60 @@ fn advice(target_level: u32, tier: u32, level: u32) -> Option<Advice> {
     let target = target(target_level, tier);
     let (states, stock) = board_in()?;
     let plan = levels::lookahead_plan(target).ok()?;
-    Game::standard().advise(&plan, target, level as usize, &states, &stock).ok()
+    let goal = (level as usize + 1).min(levels::MAX_LEVEL);
+    let pity = pity_in().map(|permille| levels::pity_needed(goal) * permille / 1000);
+    Game::standard().advise(&plan, target, level as usize, &states, &stock, pity).ok()
 }
 
 /// The look-ahead plan's next step toward `target_level` (with `tier` the
 /// crit relic's mark past the top, 0 for none) from the board in `io`, seen
-/// at inheritor `level`.  Returns the kind of step, the rest in io[40..49]:
+/// at inheritor `level`.  Returns the kind of step, the rest in io[40..52]:
 ///
 /// 0 level up (the next level's requirement is met), 1 roll a relic for the
 /// requirement, 2 roll a spare relic for the pity, 3 summon, 4 convert other
 /// relics into the crit relic, 5 farm the crit relic, 6 done, -1 no advice.
 ///
 /// io[40] the level worked toward.  For a roll: io[41] the relic; io[42] how
-/// it is played - 1 target (io[44] glory, io[45] despair, -1 any), 2 score
-/// (weights in io_f), 3 reach (io[44] the mark) - solved at level io[43];
-/// io[46] / io[47] the bar's glory / despair (-1 any; -1 both for a farm);
-/// io[48] 1 if any roll closing the gap is kept too.
+/// it is played, from the relic's own memory, solved at level io[43] - 1
+/// closing the gap to (io[44] glory, io[45] despair) (the totals it plays to),
+/// ties weighed io[48] : io[49], 2
+/// the best chance of the bar (io[44] glory, io[45] despair) then closing
+/// the gap to (io[48] glory, io[49] despair), 3 a farm roll: max
+/// amplification above the mark io[44]; io[46] / io[47] the work's bar
+/// glory / despair (-1 any; -1 both for a farm).  io[50] / io[51]: the
+/// totals every roll at this level closes the gap to, glory / despair (-1
+/// both for none) - for `keeps_roll`.
 #[unsafe(no_mangle)]
 pub extern "C" fn advise(target_level: u32, tier: u32, level: u32) -> i32 {
     let Some(a) = advice(target_level, tier, level) else { return -1 };
     // SAFETY: as in `board_in`
-    let (io, io_f) = unsafe { (&mut *(&raw mut IO), &mut *(&raw mut IO_F)) };
+    let io = unsafe { &mut *(&raw mut IO) };
     io[40..].fill(-1);
     io[40] = a.goal as i32;
+    if let Some((glory, despair)) = a.horizon {
+        io[50] = glory as i32;
+        io[51] = despair as i32;
+    }
     if let Some((relic, key)) = a.roll() {
         io[41] = relic as i32;
         match key {
-            TableKey::Target { level, glory, despair } => {
+            TableKey::Close { level, glory, despair, tie: (wg, wd), .. } => {
                 io[42] = 1;
                 io[43] = i32::from(level);
                 io[44] = i32::from(glory);
-                io[45] = despair.map_or(-1, i32::from);
+                io[45] = i32::from(despair);
+                io[48] = i32::from(wg);
+                io[49] = i32::from(wd);
             }
-            TableKey::Score { level, w_glory, w_despair } => {
+            TableKey::Target { level, glory, despair, then: (tg, td, _) } => {
                 io[42] = 2;
                 io[43] = i32::from(level);
-                io_f[0] = f64::from_bits(w_glory);
-                io_f[1] = f64::from_bits(w_despair);
+                io[44] = i32::from(glory);
+                io[45] = i32::from(despair);
+                io[48] = i32::from(tg);
+                io[49] = i32::from(td);
             }
-            TableKey::Reach { level, mark } => {
+            TableKey::Above { level, mark, .. } => {
                 io[42] = 3;
                 io[43] = i32::from(level);
                 io[44] = i32::from(mark);
@@ -220,15 +259,9 @@ pub extern "C" fn advise(target_level: u32, tier: u32, level: u32) -> i32 {
         }
     }
     match &a.next {
-        Next::Move(Move::Quest { bar, closer, .. }) => {
+        Next::Move(Move::Quest { bar, .. } | Move::Filler { bar, .. }) => {
             io[46] = i32::from(bar.glory);
             io[47] = bar.despair.map_or(-1, i32::from);
-            io[48] = i32::from(*closer);
-        }
-        Next::Move(Move::Filler { bar, .. }) => {
-            io[46] = i32::from(bar.glory);
-            io[47] = bar.despair.map_or(-1, i32::from);
-            io[48] = 0;
         }
         _ => {}
     }
@@ -243,13 +276,39 @@ pub extern "C" fn advise(target_level: u32, tier: u32, level: u32) -> i32 {
     }
 }
 
-/// Whether the step `advise` gives for the same inputs keeps a fresh
-/// (glory, despair) on the relic it rolls: 1 keep, 0 discard, -1 not a roll.
+/// Whether a roll keeps a fresh (glory, despair), judged on the board in io
+/// as it stood when the attempt began: a roll on `relic` toward
+/// (`bar_glory`, `bar_despair`; -1 any) for the quest of level `goal`,
+/// closing the gap to the totals (`h_glory`, `h_despair`; -1 none) - a
+/// quest roll or a filler alike, as `advise` described it - or, `farm` 1, a
+/// crit relic farm roll.  1 keep, 0 discard, -1 for a roll that cannot be.
 #[unsafe(no_mangle)]
-pub extern "C" fn keeps(target_level: u32, tier: u32, level: u32, glory: u32, despair: u32) -> i32 {
-    let (Some(a), Some((states, _))) = (advice(target_level, tier, level), board_in()) else { return -1 };
+#[allow(clippy::too_many_arguments)]
+pub extern "C" fn keeps_roll(
+    h_glory: i32,
+    h_despair: i32,
+    goal: u32,
+    relic: u32,
+    bar_glory: i32,
+    bar_despair: i32,
+    farm: u32,
+    glory: u32,
+    despair: u32,
+) -> i32 {
+    let Some((states, _)) = board_in() else { return -1 };
     let (Ok(g), Ok(d)) = (u8::try_from(glory), u8::try_from(despair)) else { return -1 };
-    Game::standard().keeps(&a, &states, (g, d)).map_or(-1, i32::from)
+    let game = Game::standard();
+    if farm == 1 {
+        return i32::from(game.keeps_farmed(&states, (g, d)));
+    }
+    let goal = goal as usize;
+    let (Ok(bar_glory), relic) = (u8::try_from(bar_glory), relic as usize) else { return -1 };
+    if !(2..=levels::MAX_LEVEL).contains(&goal) || relic >= N_RELICS {
+        return -1;
+    }
+    let bar = levels::Bar::new(bar_glory, u8::try_from(bar_despair).ok());
+    let horizon = u32::try_from(h_glory).ok().zip(u32::try_from(h_despair).ok());
+    i32::from(game.keeps_roll(horizon, goal, relic, bar, &states, (g, d)))
 }
 
 /// Pity points that level the inheritor up to `goal` without its requirement.
@@ -280,8 +339,9 @@ mod tests {
 
     #[test]
     fn matches_the_native_solver() {
-        assert_eq!(configure(19, 0, 0, 0, 0.0, 0.0, 0.0), 0);
-        let mut native = Solver::new(Config::for_level(19, Strategy::default()).unwrap());
+        // max amplification above 40%, over a memory of 7/1
+        assert_eq!(configure(19, 0, 40, 0, 0, 0, 7, 1, 0.0), 0);
+        let mut native = Solver::new(Config::for_level(19, Strategy::above(40, Some((7, 1)))).unwrap());
         let start = native.start_state();
         let code = best(1, 1, 1, 0, 9, 10, 0);
         let want = match native.best_action(start) {
@@ -291,21 +351,22 @@ mod tests {
             other => panic!("start state solved to {other:?}"),
         };
         assert_eq!(code, want);
-        let analysis = native.analyse(None);
+        // the score is the chance of 40% or more
         let score = expected_score(1, 1, 1, 0, 9, 10, 0);
-        assert!((score - analysis.e_amplification).abs() < 1e-9, "{score} vs {}", analysis.e_amplification);
+        let want = native.value(start).score;
+        assert!((score - want).abs() < 1e-12 && score > 0.0, "{score} vs {want}");
     }
 
     #[test]
     fn rejects_impossible_states() {
-        assert_eq!(configure(19, 0, 0, 0, 0.0, 0.0, 0.0), 0);
+        assert_eq!(configure(19, 0, 0, 0, 0, 0, 0, 255, 0.0), 0);
         assert_eq!(best(10, 0, 0, 0, 9, 10, 0), -1); // 10 glory slots on a 9-slot board
         assert_eq!(best(2, 3, 0, 0, 9, 10, 0), -1); // more successes than fills
         assert_eq!(best(1, 1, 1, 0, 9, 11, 0), -1); // over the spirit cap
         assert_eq!(best(1, 1, 1, 0, 9, 10, 5), -1); // no such tier
         assert_eq!(best(9, 5, 9, 2, 0, 3, 2), 3);
         assert_eq!(best(5, 2, 5, 2, 0, 0, 2), 4);
-        assert_eq!(configure(19, 7, 0, 0, 0.0, 0.0, 0.0), -1);
+        assert_eq!(configure(19, 7, 0, 0, 0, 0, 0, 255, 0.0), -1);
     }
 
     /// The level-18 board of the repo's advice tests (tests/levels.rs), the
@@ -324,29 +385,44 @@ mod tests {
         for (i, &n) in stock.iter().enumerate() {
             io[24 + i] = n as i32;
         }
+        io[36] = -1; // the pity not known
     }
 
     #[test]
     fn advises_like_the_native_advisor() {
         load(&BOARD, &STOCK);
-        // Mountain Crown, all or nothing for 8+ / 2- at level 18, gap-closers kept
+        // Mountain Crown (8/3) toward 8/2 at level 18, played to close the
+        // gap to the totals ahead, level 20's (4 glory short, 6 despair over): up to 9 glory, 0 despair
         assert_eq!(advise(20, 46, 18), 1);
         let io = unsafe { &*(&raw const IO) };
-        assert_eq!(&io[40..49], &[19, 11, 1, 18, 8, 2, 8, 2, 1]);
-        assert_eq!(keeps(20, 46, 18, 8, 2), 1);
-        assert_eq!(keeps(20, 46, 18, 7, 1), 1); // gap 5 -> 4
-        assert_eq!(keeps(20, 46, 18, 7, 2), 0);
-        assert_eq!(keeps(20, 46, 18, 0, 0), 0); // a wipe
+        assert_eq!(&io[40..48], &[19, 11, 1, 18, 9, 0, 8, 2]);
+        // the rest weighed 2 : 3: 4 glory short, 6 despair over; those totals for the keep rule
+        assert_eq!(&io[48..50], &[2, 3]);
+        assert_eq!(&io[50..52], &[96, 16]);
+        // kept as that roll keeps (relic 11 toward 8/2, for level 19, to the totals it played to)
+        let h = (io[50], io[51]);
+        assert_eq!(keeps_roll(h.0, h.1, 19, 11, 8, 2, 0, 8, 2), 1);
+        assert_eq!(keeps_roll(h.0, h.1, 19, 11, 8, 2, 0, 7, 1), 1); // gap 10 -> 9
+        // the same gap, but a despair shed weighs more than the glory lost (2 : 3)
+        assert_eq!(keeps_roll(h.0, h.1, 19, 11, 8, 2, 0, 7, 2), 1);
+        assert_eq!(keeps_roll(h.0, h.1, 19, 11, 8, 2, 0, 0, 0), 0); // a wipe
+        assert_eq!(keeps_roll(h.0, h.1, 25, 11, 8, 2, 0, 9, 0), -1); // no such level
+        // a farm roll keeps more amplification on the crit relic (7/1: 33%)
+        assert_eq!(keeps_roll(h.0, h.1, 20, 1, -1, -1, 1, 8, 1), 1);
+        assert_eq!(keeps_roll(h.0, h.1, 20, 1, -1, -1, 1, 7, 1), 0);
         // too few Mountain Crowns: the next best-stocked 3-despair relic
         let mut stock = STOCK;
         stock[11] = 9;
         load(&BOARD, &stock);
         assert_eq!(advise(20, 46, 18), 1);
         assert_eq!(unsafe { (*(&raw const IO))[41] }, 2);
-        // nothing affordable: summon, and no roll to keep
+        // nothing affordable: summon
         load(&BOARD, &[0; 12]);
         assert_eq!(advise(20, 46, 18), 3);
-        assert_eq!(keeps(20, 46, 18, 9, 0), -1);
+        // a goal below the top: the same quest work toward it, and done on reaching it
+        load(&BOARD, &STOCK);
+        assert_eq!(advise(19, 0, 18), 1);
+        assert_eq!(advise(18, 0, 18), 6);
         // requirement met: level up
         let mut board = BOARD;
         board[9] = (9, 0);
@@ -360,9 +436,17 @@ mod tests {
 
     #[test]
     fn solves_every_kind_of_key() {
-        assert_eq!(configure(18, 3, 0, 0, 1.0, 1.0, 0.0), 0); // score
+        assert_eq!(configure(18, 1, 8, 255, 0, 0, 7, 3, 0.0), 0); // close, any despair, from 7/3
         assert!(matches!(best(1, 1, 0, 0, 9, 10, 1), 0..=2));
-        assert_eq!(configure(18, 1, 8, 255, 0.0, 0.0, 0.0), 0); // any despair
+        assert_eq!(configure(18, 1, 8, 1, 0, 0, 0, 255, 0.0), 0); // close, memory not known
         assert!(matches!(best(1, 1, 0, 0, 9, 10, 1), 0..=2));
+        assert_eq!(configure(18, 2, 8, 1, 9, 0, 7, 3, 0.0), 0); // the bar 8/1, then to 9/0, from 7/3
+        assert!(matches!(best(1, 1, 0, 0, 9, 10, 1), 0..=2));
+        assert_eq!(configure(18, 2, 8, 1, 255, 0, 0, 255, 0.0), 0); // the bar, then more glory less despair
+        assert!(matches!(best(1, 1, 0, 0, 9, 10, 1), 0..=2));
+        assert_eq!(configure(20, 0, 46, 0, 0, 0, 8, 2, 0.0), 0); // above 46%, over 8/2
+        assert!(matches!(best(1, 1, 1, 0, 9, 10, 0), 0..=2));
+        assert_eq!(configure(20, 0, 0, 0, 0, 0, 0, 255, 0.0), 0); // any finished result, no memory
+        assert_eq!(configure(20, 3, 46, 0, 0, 0, 8, 2, 0.0), -1); // no kind 3 any more
     }
 }

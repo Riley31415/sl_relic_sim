@@ -32,22 +32,25 @@
     const stock = [207, 115, 135, 92, 109, 28, 156, 105, 36, 180, 4, 137];
     const goal = { level: 20, tier: 46 };
     out.advice = solver.advise(goal, 18, board, stock);
-    out.keeps = [[8, 2], [7, 1], [7, 2]].map(([glory, despair]) => solver.keeps(goal, 18, board, stock, { glory, despair }));
+    // judged as the extension judges them: against the roll the advice describes
+    const roll = { horizon: out.advice.horizon, goal: out.advice.goal, relic: out.advice.relic, bar: out.advice.bar, farm: false };
+    out.keeps = [[8, 2], [7, 1], [7, 2]].map(([glory, despair]) => solver.keepsRoll(roll, board, { glory, despair }));
     out.pity = [solver.pityNeeded(19), solver.pityGain(18)];
     solver.configure(18, out.advice.objective);
     out.adviceMove = solver.best({ gf: 1, gs: 1, df: 0, ds: 0, ms: 9, sp: 10 }, 1);
 
-    // a settled target: one glory slot left, 3 despair successes already -
-    // 8+/2- is out of reach, every move scores 0, and the solver's tie-breaks
-    // play for the nearest box (6/3: the glory roll landing), then
-    // amplification: it trains at 35%, as playing for amplification does
+    // a settled target: 8/2 from a memory of 8/3 (one step off), with one
+    // glory slot left and 3 despair successes already - nothing this attempt
+    // can end on is nearer, every move scores 0, and the solver's tie-break
+    // plays for amplification: it trains at 35%, as playing for it does
     const settled = { gf: 8, gs: 5, df: 9, ds: 3, ms: 3, sp: 4 };
-    solver.configure(18, { kind: 'target', glory: 8, despair: 2 });
+    solver.configure(18, { kind: 'target', glory: 8, despair: 2 }, { glory: 8, despair: 3 });
     out.settled = { odds: solver.expected(settled, 3), move: solver.best(settled, 3) };
     solver.configure(18, { kind: 'max' });
     out.settled.ampMove = solver.best(settled, 3);
-    // and the same slot while the box can still be hit (7 glory successes so far)
-    solver.configure(18, { kind: 'target', glory: 8, despair: 3 });
+    // and the same slot while the gap can still close (7 glory successes so
+    // far, from a memory of 7/3: an 8th closes the gap to 8/3)
+    solver.configure(18, { kind: 'target', glory: 8, despair: 3 }, { glory: 7, despair: 3 });
     out.open = solver.best({ gf: 8, gs: 7, df: 9, ds: 3, ms: 3, sp: 4 }, 3);
 
     const img = new Image();
