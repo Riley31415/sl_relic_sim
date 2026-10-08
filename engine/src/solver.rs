@@ -145,9 +145,15 @@ impl Strategy {
     /// Maximize amplification above a target: the minimum useful amplification `mark`%,
     /// at +5% / -2%, over the memory `from`
     /// if one is in place (a result must beat it to be kept, so the mark is
-    /// at least one above it; None: any finished result counts).
+    /// at least one above it).  No mark (0) over no memory, or one at +0%,
+    /// is no target at all: the most amplification, expected
+    /// (`Strategy::default`) - scored as the chance of +0% or more it would
+    /// play for the chance of finishing alone.
     pub fn above(mark: u8, from: Option<(u8, u8)>) -> Self {
         let least = from.map_or(0, |(g, d)| (5 * i32::from(g) - 2 * i32::from(d)).clamp(0, 254) as u8 + 1);
+        if mark == 0 && least <= 1 {
+            return Strategy::default();
+        }
         Strategy { objective: Objective::Above { mark: mark.max(least), least }, w_glory: 5.0, w_despair: 2.0, then: None, last: Last::Amp }
     }
 
@@ -669,24 +675,11 @@ impl Solver {
             let k = self.nearest(s);
             let mut best: Option<Value> = None;
             for action in self.legal_actions(s) {
-                let (mut p_finish, mut score, mut then, mut near, mut last) = (0.0, 0.0, 0.0, 0.0, 0.0);
-                for (prob, next, _ok) in self.transitions(s, action) {
-                    if prob != 0.0 {
-                        let sub = self.value(next);
-                        p_finish += prob * sub.p_finish;
-                        score += prob * sub.score;
-                        then += prob * sub.then;
-                        last += prob * sub.last;
-                        // a step that puts the nearest result out of reach ends nearer to nothing
-                        if k.is_some() && self.nearest(next) == k {
-                            near += prob * sub.near;
-                        }
-                    }
-                }
+                let v = self.act(s, action, k);
                 if best.is_none_or(|b| {
-                    self.better((p_finish, score, then, near, last), (b.p_finish, b.score, b.then, b.near, b.last))
+                    self.better((v.p_finish, v.score, v.then, v.near, v.last), (b.p_finish, b.score, b.then, b.near, b.last))
                 }) {
-                    best = Some(Value { p_finish, score, then, near, last, choice: Choice::Act(action) });
+                    best = Some(v);
                 }
             }
             // a dead end inherits nothing at all: 0 glory, 0 despair, the floor
@@ -699,6 +692,32 @@ impl Solver {
         };
         self.memo.insert(s.key(), result);
         result
+    }
+
+    /// Taking `action` in `s` (a legal one), then playing optimally: what
+    /// `value` weighs it by against the other actions.
+    pub fn action_value(&mut self, s: State, action: Action) -> Value {
+        let k = self.nearest(s);
+        self.act(s, action, k)
+    }
+
+    /// `action_value`, given the nearest result still reachable from `s`.
+    fn act(&mut self, s: State, action: Action, k: Option<u8>) -> Value {
+        let (mut p_finish, mut score, mut then, mut near, mut last) = (0.0, 0.0, 0.0, 0.0, 0.0);
+        for (prob, next, _ok) in self.transitions(s, action) {
+            if prob != 0.0 {
+                let sub = self.value(next);
+                p_finish += prob * sub.p_finish;
+                score += prob * sub.score;
+                then += prob * sub.then;
+                last += prob * sub.last;
+                // a step that puts the nearest result out of reach ends nearer to nothing
+                if k.is_some() && self.nearest(next) == k {
+                    near += prob * sub.near;
+                }
+            }
+        }
+        Value { p_finish, score, then, near, last, choice: Choice::Act(action) }
     }
 
     pub fn best_action(&mut self, s: State) -> Choice {

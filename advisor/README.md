@@ -1,12 +1,40 @@
 # Relic advisor
 
+The library between the engine and the tools people use. It takes the
+engine's computed results (the exact solver, the Look Ahead
+plan) and turns what the extension and the website see into what to do:
+which relic, which move, keep or replace, and why.
+
+| Part | What it is |
+| --- | --- |
+| [wasm/](wasm/) | The engine's solver and plan behind a flat WebAssembly interface (`relic-wasm`): solve a state, value each move, spread every result, the plan's next step and keep rule. |
+| [js/](js/) | The JavaScript library both front ends run: `solver.js` (the WebAssembly, wrapped), `advice.js` (each option on a board and where it leads, which one is advised, the keep rule and its reasons), `logic.js` (the game's rules, the strategies), and the screen reader (`vision.js`, `mainpage.js`, `digits.js`, `glyphdata.js`). |
+| [src/](src/) | `relic-advisor`, the command line: the same advice from a screenshot of the Hero's Legacy grid (below). |
+
+The extension copies `js/` into its own folder when it builds (an unpacked
+extension loads nothing from outside it). The website publishes it as
+`lib/`. A fix here reaches both.
+
+```
+cd advisor
+node build.mjs            # wasm/ to WebAssembly: js/relic.wasm
+node js/test/run.mjs      # the library's tests: screen reader, rules, advice
+node js/test/browser.mjs  # the solver and screen reader in headless Chrome
+cd wasm && cargo test --release
+```
+
+`node js/test/make-glyphs.mjs` rebuilds the screen reader's digit examples
+(`js/glyphdata.js`) from the captures in `js/test/images`.
+
+## The command line
+
 Reads a screenshot of the Hero's Legacy grid (all twelve relics) and says
-what the look-ahead plan does next: which relic to attempt and how to play
+what the Look Ahead plan does next: which relic to attempt and how to play
 it, which results to keep, or to summon. The decisions are the Monte Carlo's
 own (`Game::advise` in the main crate), so following the advice plays the plan
-LEVELS.md costs out.
+COST.md costs out.
 
-## Setup
+### Setup
 
 ```
 cd advisor
@@ -14,11 +42,11 @@ cargo build --release
 cargo test --release
 ```
 
-## Use
+### Use
 
 ```
 target/release/relic-advisor shot.png                 # toward level 20 + 43% crit amp
-target/release/relic-advisor shot.png --target 20+48  # another look-ahead target (2-20, 20+43/46/48/50)
+target/release/relic-advisor shot.png --target 20+48  # another Look Ahead target (2-20, 20+43/46/48/50)
 target/release/relic-advisor shot.png --level 19      # if the level can't be read
 target/release/relic-advisor --level 18 --board 7/1/207 7/1/115 ...   # typed in, screen order
 ```

@@ -64,3 +64,4 @@ canvas { width: 100%; height: auto; background: #000; border-radius: 4px; }
 #log li.warn { color: #e8c35a; }
 #log li.good { color: var(--green); }
 #log li.ask { color: var(--blue); }
+input:disabled, select:disabled { opacity: 0.7; cursor: default; }

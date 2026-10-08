@@ -1,9 +1,9 @@
 //! `relic-advisor`: read a Hero's Legacy screenshot and say what the
-//! look-ahead plan does next - which relic to attempt and how to play it,
+//! Look Ahead plan does next - which relic to attempt and how to play it,
 //! whether to keep the result, or to summon.
 //!
 //!     relic-advisor shot.png                  advise toward level 20 + 43%
-//!     relic-advisor shot.png --target 20      a different look-ahead target
+//!     relic-advisor shot.png --target 20      a different Look Ahead target
 //!     relic-advisor shot.png --level 19       when the level can't be read
 //!     relic-advisor --level 18 --board 7/1/207 7/1/115 ...   no screenshot
 //!     relic-advisor shot.png --dump           what every number was read from
@@ -24,7 +24,7 @@ use relic_advisor::vision::{self, Frame, Screen, Spot};
 #[derive(Parser)]
 #[command(
     name = "relic-advisor",
-    about = "What the look-ahead plan does next, from a Hero's Legacy screenshot"
+    about = "What the Look Ahead plan does next, from a Hero's Legacy screenshot"
 )]
 struct Args {
     /// a screenshot of Hero's Legacy showing all twelve relics (PNG, JPEG, WebP, BMP)
@@ -114,7 +114,7 @@ fn run(a: Args) -> Result<String, String> {
     let step = describe_step(game, &plan, advice.goal);
     let goal = advice.goal;
     out.push_str(&wrap(
-        &format!("plan: look-ahead to {}; level {goal} step: {step}", target_text(target)),
+        &format!("plan: Look Ahead to {}; level {goal} step: {step}", target_text(target)),
         2,
         8,
     ));

@@ -53,6 +53,35 @@ pub fn tier_split_with_fuel(cfg: Config, split: u8, reserve: i32) -> impl Fn(Sta
     }
 }
 
+/// The naive rule's fuel threshold: train at 80% and 65% once spirit power is
+/// at or below this share of the fills left.
+pub const NAIVE_FUEL: f64 = 0.3;
+
+/// The naive rule, a player going by the rate alone: glory at 80% and 65%
+/// until the glory bar is full, despair at 35% and 20% until the despair bar
+/// is full, mental training at 50% - or the open bar there, once the other is
+/// full - and mental training once the bar a rate suits is full.  Training at
+/// 80% and 65% too only once the fuel runs low: spirit power at or below
+/// `fuel` times the fills both bars still need.
+pub fn naive(cfg: Config, fuel: f64) -> impl Fn(State, &[Action]) -> Action {
+    move |s, legal| {
+        let (glory_full, despair_full) = (s.gf == cfg.slots, s.df == cfg.slots);
+        let fills_left = f64::from(cfg.slots - s.gf) + f64::from(cfg.slots - s.df);
+        let low = f64::from(s.sp) <= fuel * fills_left;
+        let order = match s.tier {
+            0 | 1 if low => [Train, Glory, Despair],
+            0 | 1 if !glory_full => [Glory, Train, Despair],
+            0 | 1 => [Train, Despair, Glory],
+            2 if glory_full => [Despair, Train, Glory],
+            2 if despair_full => [Glory, Train, Despair],
+            2 => [Train, Glory, Despair],
+            _ if !despair_full => [Despair, Train, Glory],
+            _ => [Train, Glory, Despair],
+        };
+        pick(legal, order)
+    }
+}
+
 /// The full rule of thumb, tuned at inheritor level 7 (level 1 cannot
 /// exercise it: one mental training always closes its fuel gap).
 ///

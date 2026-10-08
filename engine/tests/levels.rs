@@ -1,5 +1,5 @@
 //! Raising the inheritor: the rules, plans, the Monte Carlo, the searches and
-//! the LEVELS.md report built on them.
+//! the COST.md report built on them.
 
 use relic::levels::report::{self, level_rows};
 use relic::levels::{
@@ -125,17 +125,26 @@ fn named_relic_levels_only_decide_their_filler() {
     assert!(levels::step_choices(game(), 4).len() > 30);
     assert_eq!(levels::knobs(game(), 4, MAX_LEVEL), ["filler", "window", "bank", "profile", "trades", "ahead"]);
     // a repair has nothing to trade
-    assert!(levels::turn(game(), 4, "trades", StepChoice::build(Profile::Repair)).is_empty());
+    assert!(levels::turn(game(), 4, MAX_LEVEL, "trades", StepChoice::build(Profile::Repair)).is_empty());
     assert!(!levels::knobs(game(), 14, MAX_LEVEL).contains(&"bank"));
-    // a level naming its relics on the way to 20: the totals ahead are 20's either way
-    assert!(!levels::knobs(game(), 13, MAX_LEVEL).contains(&"ahead"));
+    // a level naming its relics on the way to 20 can still aim its rolls at a
+    // later level's totals once its bar is settled
+    assert!(levels::knobs(game(), 13, MAX_LEVEL).contains(&"ahead"));
+    // the totals ahead on the way to 20 are level 20's: written as level 20, and
+    // the levels just before a slot is added come first
+    let aims = levels::aims(game(), 14, MAX_LEVEL);
+    assert_eq!(aims[..3], [(false, None), (false, Some(15)), (false, Some(19))]);
+    assert!(!aims.contains(&(true, None)) && aims.contains(&(false, Some(20))));
+    let step = StepChoice { ahead: true, ..StepChoice::build(Profile::Repair) };
+    assert_eq!(levels::named_aim(game(), 14, MAX_LEVEL, step).code(), "R,a20");
+    assert_eq!(StepChoice::parse("R,a15,f").unwrap().aim_at, Some(15));
 }
 
 #[test]
 fn the_saved_plans() {
     let look = plan("lookahead");
     assert_eq!(look.step(6).profile, Some(Profile::Repair));
-    assert!(!look.step(2).filler); // look-ahead saves its early stock
+    assert!(!look.step(2).filler); // Look Ahead saves its early stock
     for lvl in [8, 11, 12, 14, 20] {
         assert_eq!(look.step(lvl).profile, Some(Profile::Repair));
     }
@@ -393,10 +402,10 @@ fn log_ticks_bunch_up_as_they_rise() {
 #[test]
 fn the_markdown_has_every_level() {
     let doc = report::markdown(60, 1).unwrap();
-    for heading in ["## Look-ahead plans", "## One attempt at each level", "## Strategy"] {
+    for heading in ["## Look Ahead plans", "## One attempt at each level", "## Strategy"] {
         assert!(doc.contains(heading), "{heading}");
     }
-    assert!(!doc.contains("reedy")); // one mode: look-ahead
+    assert!(!doc.contains("reedy")); // one mode: Look Ahead
     assert!(!doc.contains("### Level ")); // grouped, not one section a level
     let strategy = &doc[doc.find("## Strategy").unwrap()..];
     for lvl in 2..=MAX_LEVEL {
@@ -406,7 +415,7 @@ fn the_markdown_has_every_level() {
             head.split(|c: char| !c.is_ascii_digit()).any(|n| n == lvl.to_string())
         });
         assert!(listed, "level {lvl}");
-        // a row in the look-ahead table and one in the attempt table
+        // a row in the Look Ahead table and one in the attempt table
         assert_eq!(doc.matches(&format!("| **{lvl}** |")).count(), 2);
     }
     assert!(doc.contains("60 simulations."));
@@ -473,13 +482,13 @@ fn the_markdown_lists_the_tiers() {
         let row = format!("| **20 + {mark}%** |");
         assert_eq!(doc.matches(&row).count(), 1, "{row}");
     }
-    assert!(doc.contains("Every row is its own look-ahead"));
+    assert!(doc.contains("Every row is its own Look Ahead"));
     assert!(doc.contains("- **Past level 20, tiers 43%, 46%, 48% and 50%:**"));
     assert!(doc.contains(">43%</text>") && doc.contains(">50%</text>"));
     assert!(!doc.contains("20 + 41%") && !doc.contains("20 + 45%"));
 }
 
-// ------------------------------------------------------------------ look-ahead targets
+// ------------------------------------------------------------------ Look Ahead targets
 
 #[test]
 fn step_codes_round_trip() {
@@ -649,8 +658,8 @@ fn filler_windows_have_codes_and_labels() {
     assert!(c.label().contains("when it fills the pity bar within 15"));
     assert!(StepChoice::parse("R,fwx").is_err() && StepChoice::parse("R,f4w5").is_err());
     // the search turns the window only where there is a filler
-    assert!(levels::turn(game(), 19, "window", StepChoice::build(Profile::Repair)).is_empty());
-    assert_eq!(levels::turn(game(), 19, "window", c).len(), levels::FILLER_WINDOWS.len() - 1);
+    assert!(levels::turn(game(), 19, MAX_LEVEL, "window", StepChoice::build(Profile::Repair)).is_empty());
+    assert_eq!(levels::turn(game(), 19, MAX_LEVEL, "window", c).len(), levels::FILLER_WINDOWS.len() - 1);
 }
 
 #[test]

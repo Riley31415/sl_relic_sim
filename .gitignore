@@ -1,4 +1,14 @@
 /engine/target/
-/extension/solver/target/
+/advisor/wasm/target/
+/advisor/js/relic.wasm
 /extension/chrome/relic.wasm
+# the advisor's library, copied in by extension/build.mjs (edit it in advisor/js)
+/extension/chrome/lib/advice.js
+/extension/chrome/lib/digits.js
+/extension/chrome/lib/glyphdata.js
+/extension/chrome/lib/logic.js
+/extension/chrome/lib/mainpage.js
+/extension/chrome/lib/solver.js
+/extension/chrome/lib/vision.js
 /advisor/target/
+/website/dist/

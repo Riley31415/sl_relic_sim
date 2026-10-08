@@ -2,7 +2,7 @@
 // report them, clicks mapped back onto the game's buttons.
 import assert from 'assert';
 
-import { test } from './harness.mjs';
+import { test } from '../../advisor/js/test/harness.mjs';
 import { Runner } from '../chrome/lib/runner.js';
 import { REF, at, isForbidden } from '../chrome/lib/vision.js';
 import { nextTier } from '../chrome/lib/logic.js';
@@ -21,7 +21,8 @@ const CONFIRM = pt(135, 102), CANCEL = pt(263, 102);
 // the solver's table for the 9-slot levels: 16-18 open with a free glory
 // success at 65%, 19 adds a free despair fail and opens at 80%
 function boardFor(level) {
-  const base = { level, slots: 9, maxSpirit: 10, startGlory: 1, startDespairFail: 0, startTier: 1 };
+  // the rate bonuses as the game's: +8/-8 at 16, +10/-8 at 17, +10/-10 from 18
+  const base = { level, slots: 9, maxSpirit: 10, startGlory: 1, startDespairFail: 0, startTier: 1, gloryMod: level >= 17 ? 0.1 : 0.08, despairMod: level >= 18 ? -0.1 : -0.08 };
   if (level === 19) return { ...base, startDespairFail: 1, startTier: 0 };
   if (level >= 16 && level <= 18) return base;
   return { ...base, slots: level < 16 ? 8 : 10 };
@@ -152,9 +153,10 @@ function fakeSolver(game) {
   };
 }
 
-function setup({ game, attempts = 3, level = 18, answers = [], clickDelay, timing = { poll: 0, settle: 0, gap: [0, 0], retry: 30 } }) {
+function setup({ game, attempts = 3, level = 18, answers = [], levels = [], clickDelay, timing = { poll: 0, settle: 0, gap: [0, 0], retry: 30 } }) {
   const logs = [];
   const asked = [];
+  const askedLevels = [], seenLevels = [], settingsSeen = [];
   const solver = fakeSolver(game);
   const runner = new Runner({
     tab: { capture: async () => ({ img: null, ratio: 1, png: '' }), click: async (x, y) => game.click(x, y) },
@@ -168,6 +170,12 @@ function setup({ game, attempts = 3, level = 18, answers = [], clickDelay, timin
         asked.push(c);
         return answers.shift() ?? null;
       },
+      askLevel: async (c) => {
+        askedLevels.push(c);
+        return levels.shift() ?? null;
+      },
+      levelSeen: (l) => seenLevels.push(l),
+      useSettings: (x) => settingsSeen.push(x),
     },
     timing,
     // like classify(): a popup is only found when looked for - Compare at
@@ -190,7 +198,7 @@ function setup({ game, attempts = 3, level = 18, answers = [], clickDelay, timin
     read: (screen) => (screen.rateTier == null ? null : { tier: screen.rateTier }),
   });
   const text = () => logs.map((l) => l.text).join('\n');
-  return { runner, logs, asked, solver, text, last: () => logs[logs.length - 1] };
+  return { runner, logs, asked, askedLevels, seenLevels, settingsSeen, solver, text, last: () => logs[logs.length - 1] };
 }
 
 /** Every decision was made at the rate the game really had. */
@@ -231,13 +239,31 @@ test('the log: one line a move, in words', async () => {
   assert.doesNotMatch(text(), /click:|tracking/);
 });
 
-test('the wrong level is caught on the opening board', async () => {
-  // a level-18 game with the panel set to 19 (no free despair fail)
+test('a wrong level is put right off the opening board: asked, where levels play differently', async () => {
+  // a level-18 game with the panel set to 19: no free despair fail, so 16, 17 or 18 - whose rate bonuses differ
   const game = new FakeGame({ roll: lucky, current: { glory: 0, despair: 0 }, level: 18 });
-  const { runner, last } = setup({ game, level: 19 });
+  const { runner, text, askedLevels, seenLevels } = setup({ game, level: 19, levels: [18], attempts: 1 });
   await runner.run();
-  assert.match(last().text, /opens with 1 free glory success and 0 free despair fails on 9 slots - that is inheritor level 16, 17 or 18, but the level is set to 19/);
-  assert.strictEqual(game.clicks.length, 1); // Inheritance, then nothing
+  assert.deepStrictEqual(askedLevels, [[16, 17, 18]]);
+  assert.deepStrictEqual(seenLevels, [18]);
+  assert.match(text(), /Inheritor level 18, read off the board \(it fits 16-18\)/);
+  assert.strictEqual(runner.board.level, 18);
+  assert.match(text(), /Found a better memory and applied it/); // played on at 18, to the end
+  // asked and not answered: stopped, nothing more clicked
+  const again = new FakeGame({ roll: lucky, current: { glory: 0, despair: 0 }, level: 18 });
+  const stopped = setup({ game: again, level: 19 });
+  await stopped.runner.run();
+  assert.match(stopped.last().text, /The inheritor level is not known \(the board fits 16-18\)/);
+  assert.strictEqual(again.clicks.length, 1); // Inheritance, then nothing
+});
+
+test('the one level a board fits is taken without asking', async () => {
+  // a level-19 opening (its free despair fail) with the panel at 16
+  const game = new FakeGame({ roll: lucky, current: { glory: 0, despair: 0 }, level: 19 });
+  const { runner, text, askedLevels, seenLevels } = setup({ game, level: 16, attempts: 1 });
+  await runner.run();
+  assert.deepStrictEqual([askedLevels, seenLevels, runner.board.level], [[], [19], 19]);
+  assert.match(text(), /Inheritor level 19, read off the board\./);
 });
 
 test('a level-19 game is fine at level 19', async () => {

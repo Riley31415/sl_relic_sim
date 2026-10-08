@@ -2,7 +2,7 @@
 // relic's Hero's Legacy, and attempts that end on the results screen.
 import assert from 'assert';
 
-import { test } from './harness.mjs';
+import { test } from '../../advisor/js/test/harness.mjs';
 import { Advisor, RELICS } from '../chrome/lib/advisor.js';
 import { REF, at } from '../chrome/lib/vision.js';
 
@@ -174,7 +174,7 @@ test('advisor: reads the main page, every stock, then works the relic the plan p
   assert.match(last().text, /Done: 2 attempt\(s\)/);
 });
 
-test('advisor: each attempt it starts sets the One relic settings to its level and objective', async () => {
+test('advisor: each attempt it starts sets the Single relic settings to its level and objective', async () => {
   const game = new Game({ board: BOARD, stock: STOCK, pity: 4680 });
   const { runner, used } = setup(game, { attempts: 2 });
   await runner.run();
@@ -359,12 +359,12 @@ test('advisor: an attempt it started and was stopped in is finished the way it b
   assert.strictEqual(store.attempt, null);
 });
 
-test('advisor: an attempt it did not start is finished by the One relic settings, then on to the main page', async () => {
+test('advisor: an attempt it did not start is finished by the Single relic settings, then on to the main page', async () => {
   const game = new Game({ board: BOARD, stock: STOCK, screen: 'board', roll: () => ({ glory: 9, despair: 0 }) });
   game.at = 5;
   const { runner, text, configured } = setup(game, { attempts: 2, level: 18, objective: { kind: 'max' } });
   await runner.run();
-  assert.match(text(), /Finishing the attempt in progress by the One relic settings: level 18, Maximize amplification above a target \(no Minimum Useful Amplification: beat the memory\)/);
+  assert.match(text(), /Finishing the attempt in progress by the Single relic settings: level 18, Maximize amplification above a target \(Minimum Useful Amplification \+0%\)/);
   assert.deepStrictEqual(configured[0], { level: 18, objective: { kind: 'max' } });
   assert.match(text(), /Results: new 9 glory, 0 despair .* - Replace with New Effect/);
   // then the advisor proper: the main page, the plan, its next attempt
@@ -379,7 +379,7 @@ test('advisor: a stale saved attempt is not trusted', async () => {
   const saved = { at: Date.now() - 2 * 60 * 60 * 1000, goal: { level: 20, tier: 46 }, level: 18, relic: 2, objective: { kind: 'target', glory: 8, despair: 2 }, roll: { horizon: { glory: 94, despair: 19 }, goal: 19, relic: 2, bar: { glory: 8, despair: 2 }, farm: false }, states: BOARD, stock: STOCK, pity: 0.5 };
   const { runner, text } = setup(game, { attempts: 1, saved });
   await runner.run();
-  assert.match(text(), /by the One relic settings/);
+  assert.match(text(), /by the Single relic settings/);
 });
 
 test('advisor: a resumed attempt that can no longer be kept is abandoned at once', async () => {

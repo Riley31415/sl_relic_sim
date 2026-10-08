@@ -3,7 +3,7 @@ import { fileURLToPath } from 'url';
 
 import { readPng } from './png.mjs';
 import { test } from './harness.mjs';
-import { inkBox, glyphs, readDigit } from '../chrome/lib/digits.js';
+import { inkBox, glyphs, readDigit } from '../digits.js';
 
 const shot = (name) => readPng(fileURLToPath(new URL(`./images/${name}.png`, import.meta.url)));
 

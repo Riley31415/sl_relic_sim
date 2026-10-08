@@ -211,7 +211,7 @@ pub fn climb(
         let goal = level + 1;
         let quest = game.quests[goal].as_ref().ok_or(format!("no requirement for level {goal}"))?;
         let rules = rules[goal].as_ref().ok_or(format!("no plan for level {goal}"))?;
-        let horizon = game.horizon_for(goal, options.max_level, rules.ahead);
+        let horizon = game.aim_horizon(goal, options.max_level, rules.ahead, rules.aim_at);
         let full = if options.pity { game.pity_needed[goal] } else { u32::MAX };
         let gain = game.pity_gain[level];
         let mut meter = 0u32;
@@ -290,6 +290,75 @@ pub fn finish(options: &RunOptions, tracked: (usize, usize), tables: &mut LocalT
         levels.push(farm.level_up(false, tracked.0, tracked.1));
     }
     Run { levels, board }
+}
+
+/// A naive climb, to measure the plan against: each level goes for its own
+/// quest only - no looking ahead, no banking, no pity fillers - rolling the
+/// weakest relic the quest still needs (the most amplification to gain; of
+/// equals, the best stocked), every attempt played by the naive rule
+/// (`naive`, one table per level), summoning when nothing it needs is
+/// affordable.  A roll is kept if it meets a named bar the memory did not, or
+/// otherwise has more amplification.  Pity still levels it up as the game
+/// does.  At the top, each tier converts the leftovers and farms the crit
+/// relic the same way.
+pub fn run_naive(game: &Game, options: &RunOptions, tracked: (usize, usize), naive: &[Table], rng: Rng) -> Run {
+    let Partial { mut player, mut levels } = start(game, options, tracked, rng);
+    let n = game.economy.relics;
+    for level in 1..options.max_level {
+        let goal = level + 1;
+        let quest = game.quests[goal].as_ref().expect("a real level");
+        let slots = slots_at(level);
+        let full = if options.pity { game.pity_needed[goal] } else { u32::MAX };
+        let mut meter = 0u32;
+        while meter < full && !quest.satisfied(&player.states) {
+            let bar = |i: usize| match quest {
+                Quest::Relics { which, bar } if which.contains(&i) => Some(*bar),
+                Quest::Each(bar) => Some(*bar),
+                _ => None,
+            };
+            let needed = (0..n).filter(|&i| match quest {
+                Quest::Total { .. } => player.states[i] != (slots, 0),
+                _ => bar(i).is_some_and(|b| !b.met_by(player.states[i])),
+            });
+            let pick = needed.filter(|&i| player.affordable(i)).min_by(|&a, &b| {
+                amplification(player.states[a])
+                    .total_cmp(&amplification(player.states[b]))
+                    .then(player.stock[b].cmp(&player.stock[a]))
+            });
+            let Some(relic) = pick else {
+                player.summon();
+                continue;
+            };
+            meter += game.pity_gain[level];
+            let (old, new) = (player.states[relic], player.attempt(relic, &naive[level]));
+            let keep = new != (0, 0)
+                && match bar(relic) {
+                    Some(b) if b.met_by(new) != b.met_by(old) => b.met_by(new),
+                    _ => amplification(new) > amplification(old),
+                };
+            if keep {
+                player.states[relic] = new;
+            }
+        }
+        levels.push(player.level_up(!quest.satisfied(&player.states), tracked.0, tracked.1));
+    }
+    let crit = tracked.1;
+    for &mark in &options.tiers {
+        let mut farm = player.clone();
+        while amplification(farm.states[crit]) < f64::from(mark) {
+            farm.convert(crit);
+            if !farm.affordable(crit) {
+                farm.summon();
+                continue;
+            }
+            let rolled = farm.attempt(crit, &naive[options.max_level]);
+            if amplification(rolled) > amplification(farm.states[crit]) {
+                farm.states[crit] = rolled;
+            }
+        }
+        levels.push(farm.level_up(false, tracked.0, tracked.1));
+    }
+    Run { levels, board: player.states }
 }
 
 /// What a plan does next at one level.
@@ -722,6 +791,7 @@ mod tests {
             locked: 0,
             prefer: None,
             ahead: false,
+            aim_at: None,
             trades: false,
         }
     }
@@ -747,6 +817,7 @@ mod tests {
             locked: 0,
             prefer: None,
             ahead: false,
+            aim_at: None,
             trades: false,
         };
         let states = [(7, 1), (7, 1), (8, 2), (8, 2), (8, 2), (7, 1), (8, 2), (8, 1), (7, 1), (9, 1), (7, 2), (8, 3)];
@@ -809,6 +880,7 @@ mod tests {
             locked: 0,
             prefer: None,
             ahead: false,
+            aim_at: None,
             trades: false,
         };
         // glory short: 8/1 -> 9/1, or 7/2 -> 8/2 (despair room to spare)
@@ -895,6 +967,7 @@ mod tests {
             locked: 0b01,
             prefer: None,
             ahead: false,
+            aim_at: None,
             trades: false,
         };
         let mut out = Vec::new();

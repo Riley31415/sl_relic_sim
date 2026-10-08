@@ -4,8 +4,8 @@ import { fileURLToPath } from 'url';
 import { readPng, compose } from './png.mjs';
 import { test } from './harness.mjs';
 import {
-  classify, boardState, boardRate, readRate, isForbidden, rel, at, REF,
-} from '../chrome/lib/vision.js';
+  classify, boardState, boardRate, readRate, isForbidden, rel, at, REF, levelsFitting,
+} from '../vision.js';
 
 const fixture = readPng(fileURLToPath(new URL('./images/board-l19.png', import.meta.url)));
 
@@ -343,4 +343,27 @@ test('every relic\'s Hero\'s Legacy: its stock and memory, as the main page has 
     assert.deepStrictEqual([screen.memory.glory.success, screen.memory.despair.success], MAIN_BOARD[i], name);
     assert.ok(screen.back, name);
   });
+});
+
+// levels 15-20 as the solver has them: slots, spirit power, head starts
+const LEVELS = [
+  { level: 15, slots: 8, maxSpirit: 10, startGlory: 1, startDespairFail: 0 },
+  { level: 16, slots: 9, maxSpirit: 10, startGlory: 1, startDespairFail: 0 },
+  { level: 17, slots: 9, maxSpirit: 10, startGlory: 1, startDespairFail: 0 },
+  { level: 18, slots: 9, maxSpirit: 10, startGlory: 1, startDespairFail: 0 },
+  { level: 19, slots: 9, maxSpirit: 10, startGlory: 1, startDespairFail: 1 },
+  { level: 20, slots: 10, maxSpirit: 10, startGlory: 1, startDespairFail: 1 },
+];
+
+test('the levels a board fits: its slots, spirit power and head starts', () => {
+  // part-way through a level-19 attempt: every 9-slot level, at any size
+  for (const f of FRAMES) assert.deepStrictEqual(levelsFitting(classify(compose(fixture, f)), LEVELS), [16, 17, 18, 19], f.name);
+  // nothing spent yet: only the level that opens this way
+  const opening = { ...classify(compose(fixture, FRAMES[0])) };
+  opening.glory = ['success', ...Array(8).fill('empty'), 'none'];
+  opening.leaves = { count: 9, contiguous: true };
+  opening.fill = 1;
+  assert.deepStrictEqual(levelsFitting(opening, LEVELS), [19]);
+  opening.despair = [...Array(9).fill('empty'), 'none'];
+  assert.deepStrictEqual(levelsFitting(opening, LEVELS), [16, 17, 18]);
 });

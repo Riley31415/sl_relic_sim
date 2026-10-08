@@ -1,0 +1,10 @@
+{
+  "name": "relic-advisor-js",
+  "private": true,
+  "type": "module",
+  "description": "The advisor's JavaScript library: the engine's solver and plan (as WebAssembly), the advice built on them, and the screen reader - shared by the extension and the website",
+  "scripts": {
+    "build": "node ../build.mjs",
+    "test": "node test/run.mjs"
+  }
+}

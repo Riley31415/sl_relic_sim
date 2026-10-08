@@ -267,6 +267,15 @@ mod disk {
     pub(super) fn save(_: TableKey, _: &Table) {}
 }
 
+/// One attempt at `level` played by the naive rule (`heuristics::naive`)
+/// rather than solved: every result it ends on, for the naive climb.
+pub(super) fn naive_table(level: u8, fuel: f64) -> Table {
+    let cfg = Config::for_level(i64::from(level), Strategy::default()).expect("level >= 1");
+    let rule = crate::heuristics::naive(cfg, fuel);
+    let (values, cum) = Solver::new(cfg).analyse(Some(&rule)).outcome_table();
+    Table { values, cum }
+}
+
 /// Memory slots per bar on inheritor `level`'s board.
 fn slots_at(level: u8) -> u8 {
     Config::for_level(i64::from(level), Strategy::default()).expect("level >= 1").slots

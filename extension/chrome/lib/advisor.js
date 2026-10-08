@@ -1,4 +1,4 @@
-// The advisor: works the relics the look-ahead plan picks, from the main
+// The advisor: works the relics the Look Ahead plan picks, from the main
 // page, until a level-up, a summon, the goal or the attempt limit.
 //
 //   main page                the Level Up button showing: stop, for the
@@ -18,16 +18,11 @@
 // read it rather than guess.
 
 import { Runner, Halt, fmtMemory } from './runner.js';
-import { chooseMemory, describeObjective } from './logic.js';
+import { RELICS, chooseMemory, describeObjective } from './logic.js';
+import { PER_ATTEMPT, isRoll, keepRule, rollOf } from './advice.js';
 
-export { describeObjective };
+export { RELICS, describeObjective };
 
-export const RELICS = [
-  "Giant's Right Hand", 'Demon Eye of Weakness', 'Oath of Immortality', 'Sacred Tree of Rebirth',
-  'Ring of Lightning', 'Golden Star', 'Seal of the Legendary Archer', 'Veil of the Night',
-  'Spark of Eternity', "Mermaid's Tear", 'Eye of the Sky', 'Crown of the Great Mountain',
-];
-const PER_ATTEMPT = 10;
 const PITY_CHECK = 0.98; // estimated this full: go and read the bar
 const SAVED_FOR = 60 * 60 * 1000; // an attempt saved longer ago than this is not trusted
 
@@ -35,7 +30,7 @@ export class Advisor extends Runner {
   /**
    * settings.goal: { level, tier } - what the plan works toward;
    * settings.level and .objective - how to finish an attempt already in
-   * progress that the advisor did not start (the One relic settings);
+   * progress that the advisor did not start (the Single relic settings);
    * ui.saveAttempt(record | null) and ui.loadAttempt() keep the attempt in
    * play, so a stopped run can finish it the way it began.
    */
@@ -202,13 +197,13 @@ export class Advisor extends Runner {
     }
     if (!this.pityRead && this.pity >= PITY_CHECK) return this.back(frame, 'the pity bar may be nearly full - reading it');
     const a = this.advise();
-    if (!['quest', 'filler', 'farm'].includes(a.step) || a.relic !== this.at) return this.back(frame, 'the plan moves on');
+    if (!isRoll(a) || a.relic !== this.at) return this.back(frame, 'the plan moves on');
     if (stock < PER_ATTEMPT) return this.back(frame, `only ${stock} on hand`);
 
     this.useLevel(this.level, a.objective);
     this.ui.useSettings?.({ level: this.level, objective: a.objective });
     // what this roll is, for its Keep or Replace: the keep rule needs nothing else
-    const roll = { horizon: a.horizon ?? null, goal: a.goal, relic: a.relic, bar: a.bar ?? null, farm: a.step === 'farm' };
+    const roll = rollOf(a);
     this.plan = { advice: a, roll, states: this.states.map((x) => [...x]), stock: [...this.stock] };
     await this.ui.saveAttempt?.({
       at: Date.now(), goal: this.goal, level: this.level, relic: this.at, objective: a.objective, roll,
@@ -233,7 +228,7 @@ export class Advisor extends Runner {
 
   /**
    * Started part-way through an attempt: finish it the way the advisor began
-   * it (saved when it clicked Inheritance), or else by the One relic
+   * it (saved when it clicked Inheritance), or else by the Single relic
    * settings, then carry on from the main page.
    */
   async resume() {
@@ -251,9 +246,9 @@ export class Advisor extends Runner {
       return;
     }
     const { level, objective } = this.fallback;
-    if (level == null) throw new Halt("An attempt is in progress, and there are no One relic settings to finish it by - set the level, or finish it yourself.");
+    if (level == null) throw new Halt("An attempt is in progress, and there are no Single relic settings to finish it by - set the level, or finish it yourself.");
     this.useLevel(level, objective);
-    this.ui.log(`Finishing the attempt in progress by the One relic settings: level ${level}, ${describeObjective(objective)}.`);
+    this.ui.log(`Finishing the attempt in progress by the Single relic settings: level ${level}, ${describeObjective(objective)}.`);
   }
 
   async onBoard(frame) {
@@ -277,7 +272,7 @@ export class Advisor extends Runner {
   choose(current, fresh) {
     const p = this.plan;
     if (!p) return chooseMemory(this.objective, current, fresh); // an attempt it did not start
-    const keepsNew = this.solver.keepsRoll(p.roll, p.states, fresh);
+    const keepsNew = keepRule({ roll: p.roll, states: p.states }, this.solver)(fresh);
     if (keepsNew === null) throw new Halt('No keep rule for this attempt - choose Keep or Replace yourself.');
     return keepsNew ? 'replace' : 'keep';
   }
@@ -293,6 +288,6 @@ export class Advisor extends Runner {
     this.plan = null;
     this.idle = 0;
     this.ui.saveAttempt?.(null);
-    if (this.level === null) this.board = null; // finished by the One relic settings: read the level next
+    if (this.level === null) this.board = null; // finished by the Single relic settings: read the level next
   }
 }

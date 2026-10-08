@@ -101,6 +101,9 @@ pub struct LevelRules {
     /// the least despair any totals level up to the target asks) rather than
     /// this level's own (`Game::horizon_for`)
     pub ahead: bool,
+    /// every attempt closes the gap to this later level's totals instead
+    /// (`Game::aim_horizon`); before `ahead`
+    pub aim_at: Option<u8>,
     /// a relic short of its bar that the keep rule ranks at least as high as
     /// the bar (a trade it took) counts as having met it: once every relic
     /// has, the bars go further

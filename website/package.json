@@ -1,0 +1,11 @@
+{
+  "name": "relic-advisor-site",
+  "private": true,
+  "type": "module",
+  "description": "GitHub Pages site that reads Slayer Legend relic inheritance screenshots and shows the solver's advice on a simulated game",
+  "scripts": {
+    "build": "node build.mjs",
+    "serve": "node serve.mjs",
+    "test": "node test/run.mjs"
+  }
+}

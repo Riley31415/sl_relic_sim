@@ -6,13 +6,14 @@ import { GameTab } from './lib/tab.js';
 import { Runner } from './lib/runner.js';
 import { Advisor } from './lib/advisor.js';
 import { REF, at, classify } from './lib/vision.js';
-import { TIER_PERCENT, show as showState } from './lib/logic.js';
+import { TIER_PERCENT, amplification, show as showState } from './lib/logic.js';
 
 const $ = (id) => document.getElementById(id);
 const DEFAULTS = {
   mode: 'advisor', goal: '20+43', level: 18, kind: 'max', glory: 7, despair: 2, closeGlory: 9, closeDespair: 0, mark: '', clickDelay: 1.5,
 };
 const FIELDS = Object.keys(DEFAULTS);
+const STRATEGY_FIELDS = ['kind', 'mark', 'glory', 'despair', 'closeGlory', 'closeDespair'];
 
 const solver = await RelicSolver.load(await (await fetch('relic.wasm')).arrayBuffer());
 const stored = await chrome.storage.local.get(['settings']);
@@ -59,7 +60,7 @@ function applyLimits() {
     const el = $(id);
     el.min = lo;
     el.max = hi;
-    if (el.value.trim() === '') continue; // a blank Minimum Useful Amplification: beat the memory
+    if (el.value.trim() === '') continue; // a blank Minimum Useful Amplification: 0
     const v = Number(el.value);
     if (Number.isFinite(v) && (v < lo || v > hi)) el.value = Math.min(hi, Math.max(lo, Math.round(v)));
   }
@@ -92,7 +93,7 @@ function readSettings() {
 
 /**
  * The advisor's level and objective for the attempt it starts, copied into
- * the One relic settings: a run stopped part-way and started again (its own
+ * the Single relic settings: a run stopped part-way and started again (its own
  * record of the attempt gone or stale) finishes it the same way.
  */
 function useSettings({ level, objective: o }) {
@@ -116,6 +117,16 @@ function saveSettings() {
   const mode = $('mode').value;
   for (const el of document.querySelectorAll('[data-mode], [data-for]')) {
     el.hidden = (el.dataset.mode && el.dataset.mode !== mode) || (el.dataset.for && !el.dataset.for.split(' ').includes($('kind').value));
+  }
+  lockStrategy();
+}
+
+/** Smart Leveler: the strategy is the plan's (set as each attempt starts), shown but not set. */
+function lockStrategy() {
+  const plan = $('mode').value === 'advisor';
+  for (const id of STRATEGY_FIELDS) {
+    $(id).disabled = plan;
+    $(id).title = plan ? 'Set by the Look Ahead plan for each attempt' : '';
   }
 }
 for (const f of FIELDS) $(f).addEventListener('change', saveSettings);
@@ -152,6 +163,7 @@ function setRunning(on) {
   $('peek').disabled = on;
   $('stop').disabled = !on;
   for (const el of document.querySelectorAll('#settings input, #settings select')) el.disabled = on;
+  if (!on) lockStrategy();
   setStatus(on ? 'running' : 'idle', on ? 'running' : '');
 }
 
@@ -168,9 +180,20 @@ function show(frame, info = {}) {
   const mark = runner?.objective?.mark;
   const worth = kind === 'close' ? `${info.expected?.toFixed(2)} useful steps until the limit`
     : kind === 'target' ? `${(100 * info.expected).toFixed(1)}% to hit the target`
-      : `${(100 * info.expected).toFixed(1)}% to ${mark != null ? `reach the +${mark}% Minimum Useful Amplification` : 'beat the memory'}`;
+      : maxScore(mark, runner?.current, info.expected);
   $('expected').textContent = info.expected == null ? '-' : `${worth}, ${(100 * info.finish).toFixed(1)}% no wipe`;
   draw(frame, info);
+}
+
+/**
+ * What 'max' plays for, in words: the chance of the mark (blank: 0), raised to
+ * beat the memory in place - or, a 0 mark with nothing to beat, the
+ * amplification expected (the engine plays for that then).
+ */
+function maxScore(mark, current, expected) {
+  const beat = current ? amplification(current) + 1 : 0;
+  if (!mark && beat <= 1) return `+${expected?.toFixed(1)}% amplification expected`;
+  return `${(100 * expected).toFixed(1)}% to reach +${Math.max(mark ?? 0, beat)}%`;
 }
 
 /** The game around the panels, with what was read marked on it. */
@@ -244,6 +267,30 @@ function askTier(candidates) {
   });
 }
 
+/** Which of the inheritor levels a board fits it is, or null if you press Stop. */
+function askLevel(levels) {
+  $('ask').hidden = false;
+  $('askText').textContent = 'The board fits more than one inheritor level - which is yours?';
+  const box = $('askButtons');
+  box.replaceChildren();
+  return new Promise((resolve) => {
+    pendingAsk = resolve;
+    for (const level of levels) {
+      const b = document.createElement('button');
+      b.textContent = `Level ${level}`;
+      b.onclick = () => finishAsk(level);
+      box.append(b);
+    }
+  });
+}
+
+/** The inheritor level a run read off the board: the setting follows it. */
+function levelSeen(level) {
+  $('level').value = level;
+  applyLimits();
+  saveSettings();
+}
+
 /** A whole number from you, or null if you press Stop. */
 function askNumber(question) {
   $('ask').hidden = false;
@@ -279,7 +326,7 @@ function finishAsk(tier) {
 }
 
 const ui = {
-  log, show, askTier, askNumber, useSettings,
+  log, show, askTier, askLevel, askNumber, useSettings, levelSeen,
   // the frame a run stopped on, unrecognised: kept for a look
   saveFrame: (frame) => (frame?.png ? download(frame) : null),
   // the attempt the advisor has in play, so a stopped run can finish it

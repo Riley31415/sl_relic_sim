@@ -1,7 +1,7 @@
 import assert from 'assert';
 
 import { test } from './harness.mjs';
-import { amplification, chooseMemory, hitsObjective, inferOutcome, nextTier, isStartState } from '../chrome/lib/logic.js';
+import { amplification, chooseMemory, hitsObjective, inferOutcome, nextTier, isStartState, levelList, pickLevel } from '../logic.js';
 
 const S = (gf, gs, df, ds, ms, sp) => ({ gf, gs, df, ds, ms, sp });
 
@@ -69,4 +69,15 @@ test('above a mark: a memory at the mark already meets it; a plain max never doe
   assert.strictEqual(hitsObjective({ kind: 'max', mark: 46 }, { glory: 10, despair: 2 }), true); // 46%
   assert.strictEqual(hitsObjective({ kind: 'max', mark: 46 }, { glory: 9, despair: 0 }), false); // 45%
   assert.strictEqual(hitsObjective({ kind: 'max' }, { glory: 10, despair: 0 }), false);
+});
+
+test('the level a board is played at: the one set if it fits, else the highest, sure or not', () => {
+  const b = (level, gloryMod, despairMod) => ({ level, slots: 9, maxSpirit: 10, gloryMod, despairMod });
+  const boards = [b(16, 0.08, -0.08), b(17, 0.1, -0.08), b(18, 0.1, -0.1), b(19, 0.1, -0.1)];
+  assert.deepStrictEqual(pickLevel([16, 17, 18, 19], boards, 17), { level: 17, sure: true, alike: true });
+  assert.deepStrictEqual(pickLevel([16, 17, 18, 19], boards, 1), { level: 19, sure: false, alike: false });
+  assert.deepStrictEqual(pickLevel([18, 19], boards, 1), { level: 19, sure: false, alike: true });
+  assert.deepStrictEqual(pickLevel([19], boards, 1), { level: 19, sure: true, alike: true });
+  assert.strictEqual(pickLevel([], boards, 1), null);
+  assert.deepStrictEqual([levelList([16, 17, 18]), levelList([18, 19]), levelList([12, 14, 15])], ['16-18', '18 or 19', '12, 14 or 15']);
 });

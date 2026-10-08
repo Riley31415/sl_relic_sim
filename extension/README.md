@@ -13,10 +13,15 @@ so), which work on a hidden tab but make the page flicker.
 
 ```
 cd extension
-node build.mjs          # cargo build --target wasm32-unknown-unknown, copies chrome/relic.wasm
-node test/run.mjs       # unit tests (screen reader, rules, run loop)
-node test/browser.mjs   # the solver + screen reader inside headless Chrome
+node build.mjs          # the advisor's build (cargo, WebAssembly), then its library into chrome/
+node test/run.mjs       # unit tests: the run loop and the Smart Leveler
 ```
+
+The solver, the advice, the rules and the screen reader are the advisor's
+(`../advisor/js`, with its own tests, see [advisor/README.md](../advisor/README.md)).
+`build.mjs` copies them into `chrome/lib/` and `chrome/relic.wasm`, because an
+unpacked extension loads nothing from outside its folder. Edit them in
+`advisor/js`, not in the copies. `node test/run.mjs` copies them first too.
 
 Then go to `chrome://extensions`, turn on Developer mode, choose **Load
 unpacked**, and pick `extension/chrome`. The toolbar button opens the side
@@ -24,7 +29,7 @@ panel.
 
 ## Modes
 
-**Advisor** (the default) plays the repo's look-ahead plan (LEVELS.md)
+**Advisor** (the default) plays the repo's Look Ahead plan (COST.md)
 toward a goal: level 19 or 20, or 20 and then Demon Eye at 43-50%. Start it
 on the main page or a relic's Hero's Legacy.
 
@@ -67,18 +72,29 @@ keep rule, saved when it clicked Inheritance. Otherwise it uses the
 **Inheritor level** and **Strategy** settings. Then it goes on from the main
 page.
 
-**One relic** plays only the relic whose Hero's Legacy is showing, at the
+**Single relic** plays only the relic whose Hero's Legacy is showing, at the
 level and with the **Strategy** set in the panel. It stops when a
 result beats the current memory.
 
 ## Use
 
 1. Open the game tab, go to Memory Inheritance, and open the side panel.
-2. Pick the **mode**. In One relic mode, set the **inheritor level**: it sets
-   the slots, spirit power, head starts and rate bonuses. If an attempt
-   doesn't open the way that level should (free glory and despair slots),
-   the run stops and names the levels that fit. The advisor reads the level
-   itself.
+2. Pick the **mode**. In Single relic mode, set the **inheritor level**: it sets
+   the slots, spirit power, head starts and rate bonuses. The board checks
+   it. The game doesn't show the level during an attempt, so the run works
+   out which levels the board fits: its slots, a spirit bar that's a whole
+   number of that level's spirit power, and its free first slots. An
+   attempt nothing has been spent on also has to be that level's opening.
+   - The level set is kept if the board fits it.
+   - Otherwise, if the board fits one level, or several that play the same
+     from here (18 and 19 do, part-way), the run switches to it, says so,
+     and updates the setting.
+   - Otherwise it asks which level, with a button for each. Part-way
+     through, levels 16-19 all show 9 slots, and only the bonuses tell them
+     apart.
+
+   **Read screen** takes the highest level that fits, without asking. The
+   advisor reads the level off the main page.
 3. Pick the **Strategy**:
    - **Maximize amplification above a target** (+5% per glory success, -2%
      per despair success), with a **Minimum Useful Amplification**: a result is
@@ -86,8 +102,11 @@ result beats the current memory.
      plays first for the best chance of the goal or more, then for the most
      amplification. If the goal slips out of reach part-way, it plays for
      the highest amplification still possible (and says so in the log),
-     never for less than beats the current memory. Leave the goal blank to
-     just beat the current memory. The advisor farms Demon Eye this way,
+     never for less than beats the current memory. Left blank, the goal is
+     0: raised to beat the memory, like any goal under it, or with no memory
+     (or one at +0%) the most amplification, expected. A result is kept
+     only if it beats the memory. The advisor farms
+     Demon Eye this way,
      with the goal's tier as the Minimum Useful Amplification.
    - **Maximize glory, minimize despair above a target**, with a **Glory
      Target** and a **Despair Target**: plays for the best chance of both at
@@ -135,7 +154,7 @@ It stops when:
 
 An attempt nothing useful can come of is abandoned at once. Every count of
 successes in the slots left is still possible, so if none of those results
-would be kept (the plan's keep rule, or in One relic mode a narrower gap to
+would be kept (the plan's keep rule, or in Single relic mode a narrower gap to
 the target or more amplification than the current memory), it clicks Abandon
 Inheritance and Confirm instead of playing on. Once nothing more of the gap
 can be closed, the solver plays the rest of the attempt for amplification.
@@ -172,13 +191,13 @@ look like a failure.
 ## Limits
 
 - Numbers are read by matching each digit against examples cut from the
-  captures (`node test/make-glyphs.mjs` rebuilds them from
-  `test/images`). A digit reads only when one match is clearly best, and
+  captures (`node advisor/js/test/make-glyphs.mjs` rebuilds them from
+  `advisor/js/test/images`). A digit reads only when one match is clearly best, and
   numbers are checked against each other wherever the game shows a check.
-- Every screen is measured on real captures in `test/images`. Boards
+- Every screen is measured on real captures in `advisor/js/test/images`. Boards
   and their rates are tested from 0.8x to 1.5x with noise, the abandon
   popup is tested never to pass for Compare, and the Mental Training
   button can be missing (0 mental strength). All five rates have been read
   in a live run. If a screen is not recognised the run stops safely: use
-  **Save frame** on it and add the image to `test/images`.
+  **Save frame** on it and add the image to `advisor/js/test/images`.
 - Automating a game may be against its terms of service.

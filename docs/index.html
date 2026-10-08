@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Relic Advisor</title>
+  <meta name="description" content="Slayer Legend relic inheritance: add a screenshot, see the exact solver's next move on a simulated game, and why.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 26'%3E%3Cpath fill='%23f5b82e' d='M10 1 19 13 10 25 1 13Z'/%3E%3Cpath fill='%23ffe08a' d='M10 1 14.5 13 10 25 5.5 13Z'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <main class="column">
+
+    <!-- Settings, the screenshot and the log: to the left of the game on a wide screen; on a narrow one
+         Settings and the screenshot above it, the log at the foot -->
+    <div class="side">
+      <section class="card" id="settings-card">
+        <h2>Settings</h2>
+        <form id="settings">
+          <label>Mode
+            <select id="mode">
+              <option value="single">Single Relic</option>
+              <option value="advisor">Smart Leveler</option>
+            </select>
+          </label>
+          <label data-mode="advisor">Final Goal
+            <select id="goal">
+              <option value="20+50">Level 20 + Demon Eye 50% amp (expensive)</option>
+              <option value="20+48">Level 20 + Demon Eye 48% amp (expensive)</option>
+              <option value="20+46">Level 20 + Demon Eye 46% amp</option>
+              <option value="20+43">Level 20 + Demon Eye 43% amp</option>
+              <option value="20">Level 20</option>
+              <option value="19">Level 19</option>
+              <option value="18">Level 18</option>
+              <option value="17">Level 17</option>
+              <option value="16">Level 16</option>
+              <option value="15">Level 15</option>
+              <option value="14">Level 14</option>
+              <option value="13">Level 13</option>
+              <option value="12">Level 12</option>
+              <option value="11">Level 11</option>
+              <option value="10">Level 10</option>
+              <option value="9">Level 9</option>
+              <option value="8">Level 8</option>
+              <option value="7">Level 7</option>
+              <option value="6">Level 6</option>
+              <option value="5">Level 5</option>
+              <option value="4">Level 4</option>
+              <option value="3">Level 3</option>
+              <option value="2">Level 2</option>
+            </select>
+          </label>
+          <label data-mode="single">Strategy
+            <select id="kind">
+              <option value="max">Maximize amplification above a target</option>
+              <option value="target">Maximize glory, minimize despair above a target</option>
+              <option value="close">Maximize glory, minimize despair until a limit</option>
+            </select>
+          </label>
+          <!-- Smart Leveler: the strategy the Look Ahead plan plays the attempt in view for, shown, not set -->
+          <label data-mode="advisor" title="To be set by smart leveler">Strategy
+            <select id="plan-kind" disabled>
+              <option value="">To be set by smart leveler</option>
+              <option value="max">Maximize amplification above a target</option>
+              <option value="target">Maximize glory, minimize despair above a target</option>
+              <option value="close">Maximize glory, minimize despair until a limit</option>
+            </select>
+          </label>
+          <div class="row" data-mode="advisor" id="plan-numbers"></div>
+          <div class="row" data-mode="single" data-for="max">
+            <label>Minimum Useful Amplification <span class="unit"><input id="mark" type="number" min="0" max="50">%</span></label>
+          </div>
+          <div class="row" data-mode="single" data-for="target">
+            <label>Glory Target <input id="glory" type="number" min="0" max="10"></label>
+            <label>Despair Target <input id="despair" type="number" min="0" max="10"></label>
+          </div>
+          <div class="row" data-mode="single" data-for="close">
+            <label>Max useful Glory <input id="closeGlory" type="number" min="0" max="10"></label>
+            <label>Min useful Despair <input id="closeDespair" type="number" min="0" max="10"></label>
+          </div>
+          <p class="error" id="settings-error" hidden></p>
+        </form>
+        <div class="history">
+          <button class="undo" id="undo" title="Undo the last input (Ctrl+Z)">&#8630; Undo</button>
+          <button class="undo" id="redo" title="Redo what was undone (Ctrl+Y)">&#8631; Redo</button>
+          <button class="undo" id="clear" title="Clear every number and the attempt, back to the defaults (Undo brings them back)">Clear data</button>
+        </div>
+      </section>
+
+      <section class="card" id="shot">
+        <h2>Import</h2>
+        <div class="drop" id="drop">
+          <p>Paste a screenshot, drop it here, or <label class="link">choose an image<input id="files" type="file" accept="image/*" multiple></label></p>
+          <!-- hover (or tap) either screen for an example of it -->
+          <p class="muted"><span class="example" tabindex="0">Glory, Despair, and Relic count page<span class="example-pic" role="img" aria-label="Example: the main page in its counts view" style="background-image:url(examples/main-counts.png);background-size:calc(var(--k) * 722px) auto;background-position:calc(var(--k) * -252px) calc(var(--k) * -21px);height:calc(var(--k) * 356px)"></span></span> or <span class="example" tabindex="0">an Attempt in progress<span class="example-pic" role="img" aria-label="Example: an attempt in progress" style="background-image:url(examples/board-l19.png);background-size:calc(var(--k) * 200px) auto;background-position:0 0;height:calc(var(--k) * 318px)"></span></span></p>
+        </div>
+        <!-- the last screenshot: its name shows what was read, on hover or tap -->
+        <p id="shot-status" class="muted" hidden><span class="example" id="shot-name" tabindex="0" hidden><span id="shot-file"></span><canvas id="shot-view" class="example-pic shot-pic" role="img" aria-label="The screenshot, with a dot on everything read: green read, red not"></canvas></span><span id="shot-text"></span></p>
+        <!-- about what was read or entered: an input refused, a number to check, which relic it is -->
+        <div id="advice" class="notices" aria-live="polite"></div>
+      </section>
+
+      <section class="card" id="log-card">
+        <h2>Log</h2>
+        <ol id="log"></ol>
+      </section>
+    </div>
+
+    <section class="phone" id="phone" aria-label="The game">
+      <div id="screen"></div>
+      <!-- a step with no button to point at (Summon, Done, open the relic), over the middle of the game -->
+      <div class="advice-pop" id="advice-pop" role="alert" hidden></div>
+      <svg class="arrow" id="arrow" viewBox="0 0 48 40" aria-hidden="true" hidden><path d="M2 13h24V3l20 17-20 17V27H2Z"/></svg>
+    </section>
+
+    <section class="card why" id="why"></section>
+  </main>
+
+  <div class="overlay" id="overlay" hidden><p>Drop to read</p></div>
+</body>
+</html>

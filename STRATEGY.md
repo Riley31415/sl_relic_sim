@@ -3,97 +3,22 @@
 How to climb the inheritor from level 1 to any goal - a level from 2 to 20, or
 level 20 plus a Demon Eye of Weakness farmed to 43, 46, 48 or 50% - and how to
 play a single inheritance attempt on the way. What every level costs in
-diamonds, goal by goal, is in [LEVELS.md](LEVELS.md); farming a crit relic is
-in [COST.md](COST.md).
+diamonds, goal by goal, is in [COST.md](COST.md).
 
 Every number about a single attempt is exact: the solver enumerates every
 branch of an attempt and weights it by its probability, rather than sampling.
 The climb's costs are simulated (20,000 runs).
 
-## The board at every level
-
-| level | memory slots | spirit power | glory rate | despair rate | starts with | first rate | average amplification | best possible | wipe chance |
-|---|---|---|---|---|---|---|---|---|---|
-| 1 | 5 | 8 | +0% | +0% | - | 80% | 13.12% | 25% | 0.36% |
-| 2 | 5 | 8 | +2% | +0% | - | 80% | 13.55% | 25% | 0.39% |
-| 3 | 5 | 8 | +2% | -2% | - | 80% | 13.73% | 25% | 0.35% |
-| 4 | 6 | 8 | +2% | -2% | - | 80% | 16.07% | 30% | 2.09% |
-| 5 | 6 | 9 | +2% | -2% | - | 80% | 16.10% | 30% | 1.99% |
-| 6 | 6 | 9 | +4% | -2% | - | 80% | 16.58% | 30% | 2.06% |
-| 7 | 6 | 9 | +4% | -4% | - | 80% | 16.81% | 30% | 2.02% |
-| 8 | 7 | 9 | +4% | -4% | - | 80% | 18.53% | 35% | 4.95% |
-| 9 | 7 | 10 | +4% | -4% | - | 80% | 19.97% | 35% | 0.90% |
-| 10 | 7 | 10 | +6% | -4% | - | 80% | 20.54% | 35% | 0.94% |
-| 11 | 7 | 10 | +6% | -6% | - | 80% | 20.81% | 35% | 0.88% |
-| 12 | 8 | 10 | +6% | -6% | - | 80% | 23.14% | 40% | 2.55% |
-| 13 | 8 | 10 | +8% | -6% | - | 80% | 23.73% | 40% | 2.60% |
-| 14 | 8 | 10 | +8% | -8% | - | 80% | 24.09% | 40% | 2.44% |
-| 15 | 8 | 10 | +8% | -8% | 1 glory success | 65% | 24.55% | 40% | 2.48% |
-| 16 | 9 | 10 | +8% | -8% | 1 glory success | 65% | 26.23% | 45% | 4.49% |
-| 17 | 9 | 10 | +10% | -8% | 1 glory success | 65% | 26.77% | 45% | 4.35% |
-| 18 | 9 | 10 | +10% | -10% | 1 glory success | 65% | 27.24% | 45% | 4.32% |
-| 19 | 9 | 10 | +10% | -10% | 1 glory success, 1 despair fail | 80% | 30.74% | 45% | 0.98% |
-| 20 | 10 | 10 | +10% | -10% | 1 glory success, 1 despair fail | 80% | 33.10% | 50% | 2.25% |
-
-"First rate" is the chance the attempt opens on. "Average amplification" is one
-attempt played for the most amplification (+5% a glory success, -2% a despair
-success, floored at 0%); "best possible" is a full glory bar with no despair.
-
-Two kinds of level shape the boards:
-
-- **Slots cost fuel.** Every slot added (levels 4, 8, 12, 16 and 20) has to be
-  filled from the same spirit power, so the wipe chance jumps at each of
-  them - to 4.95% at level 8, the worst board in the game. Spirit power grows
-  only at levels 5 and 9 and stops at 10, so from level 12 on every new slot
-  is paid for with mental training.
-- **Head starts save fuel, but move the rate like real results.** From level
-  15 every attempt starts with one glory slot already a success, and from
-  level 19 one despair slot already a failure. Each is a slot that costs no
-  spirit power and cannot go wrong - but a success makes the next action
-  harder, so levels 15-18 open at 65% instead of 80%. The despair failure at
-  19 moves it back up to 80%. That opening step down takes back much of what
-  the free glory slot gives: level 15 is only 0.46 points better than level
-  14, and levels 16-18 wipe more than any other late board (4.3-4.5%).
-  Level 19 gets both halves and is the best board below 20: 16 fills against
-  10 spirit power, only 3 successful trainings needed, an 80% start, and a
-  wipe in 1 attempt in 100.
-
 ## Every goal
 
 A level is reached with attempts made on the level before it: level 13 with
 attempts on the level-12 board, and so on. Each goal has its own plan - the
-cheapest route to it, found by the look-ahead search - so what a level costs
+cheapest route to it, found by the Look Ahead search - so what a level costs
 depends on what lies beyond it. The requirement is what the board must show
 to level up; pity levels up without it.
 
-| goal | requirement | total diamonds | the last level-up | reached by pity |
-|---|---|---|---|---|
-| 2 | Giant Hand: 3+ / any | 47K | 47K | 59% |
-| 3 | Demon Eye, Immortal Oath: 3+ / 2- | 78K | 30K | 62% |
-| 4 | all twelve together: 25+ / 21- | 78K | 0.5K | 0% |
-| 5 | Sacred Tree, Lightning Ring, Golden Star: 5+ / 2- | 142K | 64K | 89% |
-| 6 | all twelve: 44+ / 18- | 179K | 37K | 13% |
-| 7 | every relic: 4+ / 2- | 258K | 79K | 60% |
-| 8 | all twelve: 59+ / 17- | 327K | 69K | 37% |
-| 9 | Archer Seal, Night Veil, Eternal Spark: 6+ / 2- | 421K | 94K | 87% |
-| 10 | all twelve: 68+ / 19- | 485K | 64K | 24% |
-| 11 | all twelve: 71+ / 18- | 587K | 102K | 41% |
-| 12 | all twelve: 73+ / 17- | 696K | 109K | 41% |
-| 13 | Mermaid Tear, Sky Eye, Mountain Crown: 7+ / 2- | 814K | 118K | 85% |
-| 14 | all twelve: 80+ / 20- | 868K | 54K | 11% |
-| 15 | all twelve: 83+ / 20- | 963K | 95K | 19% |
-| 16 | all twelve: 85+ / 20- | 1.07M | 107K | 21% |
-| 17 | all twelve: 89+ / 21- | 1.15M | 83K | 19% |
-| 18 | all twelve: 91+ / 20- | 1.23M | 75K | 14% |
-| 19 | all twelve: 94+ / 19- | 1.36M | 127K | 30% |
-| 20 | all twelve: 96+ / 16- | 1.51M | 158K | 39% |
-| 20 + 43% | Demon Eye at 43% | 1.56M | 50K | - |
-| 20 + 46% | Demon Eye at 46% | 1.68M | 119K | - |
-| 20 + 48% | Demon Eye at 48% | 1.96M | 279K | - |
-| 20 + 50% | Demon Eye at 50% | 5.31M | 3.35M | - |
-
-"The last level-up" is what the goal costs over the goal before it, each from
-its own plan.
+Every goal's cost is in [COST.md](COST.md): from 47K for level 2 to 1.50M for
+level 20, and 1.55M to 5.25M with the Demon Eye farmed to a tier.
 
 How the plans differ by goal:
 
@@ -109,43 +34,46 @@ How the plans differ by goal:
   relics the next named level needs: reaching level 5 costs 142K when 5 is
   the goal, but 358K on the way to 20 + 43%. The stock bought early is spent
   on the later levels, which is why they come cheap.
-- **The Demon Eye tiers share the climb.** 20 + 43% and 20 + 46% use the same
-  plan as far as level 20; 48% and 50% build some totals levels to a bar
-  instead of repairing them. Past 46% each point gets much dearer: 50% - a
-  full glory bar and no despair - costs 3.35M more than 48%.
+- **The Demon Eye tiers climb nearly alike.** 20 + 43% and 20 + 46% differ
+  only in a few early fillers and where some levels aim; 48% and 50% also
+  build levels 4, 8 and 14 to a bar instead of working on the worst relics.
+  Past 46% each point gets much dearer: 50% - a full glory bar and no
+  despair - costs 3.30M more than 48%.
 
 ## The climb to 20 + 43%
 
-The cheapest route to level 20 and a 43% Demon Eye, the extension's default
-goal, step by step. The route to 20 + 46% is the same as far as level 20. Diamonds are what each level-up costs on this route; the
-strategy names are the extension's.
+**We recommend level 20 + 43%: it is the best place to stop for the damage
+your diamonds buy.** The step from level 20 to a 43% Demon Eye adds about 2.7% damage for
+50K diamonds - as good a return as the last level-ups (level 20 itself adds
+10% for 157K) - while every tier past it returns far less: 46% adds 1.4% for
+another 120K, and 50% under 0.1% per 100K. This is the route there, level by
+level; the route to 20 + 46% is nearly the same as far as level 20. The strategy
+names are the extension's.
 
-| to level | requirement | how attempts are played | diamonds | by pity |
-|---|---|---|---|---|
-| 2 | Giant Hand: 3+ / any | **maximize glory, minimize despair above a target**: the best chance of 3+ glory | 64K | 0% |
-| 3 | Demon Eye, Immortal Oath: 3+ / 2- | above a target: the best chance of 3+ / 2- on each | 56K | 0% |
-| 4 | 25+ / 21- in total | build relics to 3 / 2; **maximize glory, minimize despair until a limit**, toward the totals ahead | 0.4K | 0% |
-| 5 | Sacred Tree, Lightning Ring, Golden Star: 5+ / 2- | above a target: 5+ / 2- on each | 237K | 13% |
-| 6 | 44+ / 18- | repair; until a limit, toward this level's totals | 1.5K | 2% |
-| 7 | every relic: 4+ / 2- | above a target: 4+ / 2- on every relic short of it | 42K | 0% |
-| 8 | 59+ / 17- | repair; until a limit | 17K | 23% |
-| 9 | Archer Seal, Night Veil, Eternal Spark: 6+ / 2- | above a target: 6+ / 2- on each | 312K | 6% |
-| 10 | 68+ / 19- | build relics to 5 / 2; until a limit, toward the totals ahead | 80K | 10% |
-| 11 | 71+ / 18- | repair; until a limit, toward the totals ahead | 8K | 18% |
-| 12 | 73+ / 17- | repair; until a limit | 36K | 21% |
-| 13 | Mermaid Tear, Sky Eye, Mountain Crown: 7+ / 2- | above a target: 7+ / 2- on each | 352K | 5% |
-| 14 | 80+ / 20- | repair; until a limit, toward the totals ahead | 2.6K | 7% |
-| 15 | 83+ / 20- | repair; until a limit | 13K | 11% |
-| 16 | 85+ / 20- | repair; until a limit | 26K | 14% |
-| 17 | 89+ / 21- | repair; until a limit, toward the totals ahead | 37K | 20% |
-| 18 | 91+ / 20- | repair; until a limit, toward the totals ahead | 49K | 9% |
-| 19 | 94+ / 19- | repair; until a limit, toward the totals ahead | 83K | 24% |
-| 20 | 96+ / 16- | repair; until a limit | 108K | 30% |
-| 20 + 43% | Demon Eye at 43% | **maximize amplification above a target**, 43% as the Minimum Useful Amplification | 37K | - |
+- **Level 2** (Giant Hand: 3+ / any): **maximize glory, minimize despair above a target**: the best chance of 3+ glory.
+- **Level 3** (Demon Eye, Immortal Oath: 3+ / 2-): above a target: the best chance of 3+ / 2- on each.
+- **Level 4** (25+ / 21- in total): work on the worst relic.
+- **Level 5** (Sacred Tree, Lightning Ring, Golden Star: 5+ / 2-): above a target: 5+ / 2- on each.
+- **Level 6** (44+ / 18-): work on the worst relic.
+- **Level 7** (every relic: 4+ / 2-): above a target: 4+ / 2- on every relic short of it, then toward level 11's totals (71+ / 18-).
+- **Level 8** (59+ / 17-): work on the worst relic.
+- **Level 9** (Archer Seal, Night Veil, Eternal Spark: 6+ / 2-): above a target: 6+ / 2- on each.
+- **Level 10** (68+ / 19-): build relics to 5 / 2, toward level 12's totals (73+ / 17-).
+- **Level 11** (71+ / 18-): work on the worst relic, toward level 12's totals (73+ / 17-).
+- **Level 12** (73+ / 17-): work on the worst relic.
+- **Level 13** (Mermaid Tear, Sky Eye, Mountain Crown: 7+ / 2-): above a target: 7+ / 2- on each, then toward level 17's totals (89+ / 21-).
+- **Level 14** (80+ / 20-): work on the worst relic, toward level 19's totals (94+ / 19-).
+- **Level 15** (83+ / 20-): work on the worst relic, toward level 19's totals (94+ / 19-).
+- **Level 16** (85+ / 20-): work on the worst relic, toward level 19's totals (94+ / 19-).
+- **Level 17** (89+ / 21-): work on the worst relic, toward level 19's totals (94+ / 19-).
+- **Level 18** (91+ / 20-): work on the worst relic, toward level 19's totals (94+ / 19-).
+- **Level 19** (94+ / 19-): work on the worst relic, toward level 20's totals (96+ / 16-).
+- **Level 20** (96+ / 16-): work on the worst relic.
+- **20 + 43%** (Demon Eye at 43%): **maximize amplification above a target**, 43% as the Minimum Useful Amplification.
 
-The whole route costs 1.56M diamonds on average: 1.53M to level 20, then
-37K to bring the Demon Eye to 43%. Farming to 46% instead costs 157K
-from level 20, 1.68M in all.
+The whole route costs 1.55M diamonds on average: 1.52M to level 20, then
+36K to bring the Demon Eye to 43%. Farming to 46% instead costs 151K
+from level 20, 1.67M in all.
 
 The climb rests on a few habits:
 
@@ -159,14 +87,13 @@ The climb rests on a few habits:
 - **The totals levels after them come cheap.** A named level leaves the board
   well built, so the totals level after it costs little: level 4 after 3,
   level 6 after 5, level 14 after 13.
-- **Build early, repair late.** The early totals levels 4 and 10 raise every
-  relic to a bar - 3 / 2, then 5 / 2 - and level 7 asks every relic for
-  4 / 2 outright. From level 11 on the board already sits near each total,
-  so the levels are repairs: while the total despair is over the budget,
-  every relic with 2 or more despair is asked for one less (the worst are
-  the easiest steps); otherwise every relic with room is asked for one more
-  glory. Of those, the relic rolled is whichever closes the most of the gap
-  per attempt.
+- **Work on the worst relics.** Level 10 raises every relic to 5 / 2 and
+  level 7 asks every relic for 4 / 2 outright; every other totals level works
+  on the worst relics one step at a time: while the total despair is over the
+  budget, take one despair off a relic with 2 or more (the most despair first
+  - those are the easiest steps); once the despair fits, add one glory to a
+  relic with room. Of those, the relic rolled is whichever closes the most of
+  the gap per attempt.
 - **Every attempt on a totals level closes the gap, step by step.** It is
   played to maximize glory, minimize despair until a limit: the limit is
   what that one relic would have to become to bring the board to the totals,
@@ -177,16 +104,25 @@ The climb rests on a few habits:
   clears the level. When every relic meets its bar and the totals are still
   short, the bars go a step further; at level 10 a relic traded off its bar
   for a result the keep rule ranks as high counts as meeting it.
-- **Look ahead where it pays.** At levels 4, 10, 11, 14 and 17-19 the plan
-  aims at the totals ahead rather than the level's own: the most glory and
-  the least despair any level up to the goal asks. On the way to 20 that is
-  96 / 16, and level 20's despair cap of 16 is the tightest in the climb, so
-  despair shed early is despair not paid for later.
+- **Aim at a later level where it pays.** Levels 7, 10 and 11 play toward
+  level 11's or 12's totals, level 13 toward level 17's, levels 14-18 toward
+  level 19's - the last board before level 20 adds a slot - and level 19
+  toward level 20's (96 / 16). Despair shed early is despair not paid for
+  later, and no level aims further ahead than the level after it.
 - **Summon rather than roll for pity.** When nothing the work needs has 10 on
   hand, the plan summons instead of rolling spare relics just to fill the
   pity bar - except at level 20, where it rolls them when the spare stock can
   fill the bar within 30 attempts. About 1 run in 4 still finishes level 19
   by pity, and 3 in 10 finish level 20 that way.
+- **Hold back only what a later level names.** A plan can bank the relics the
+  next named level will ask for, keeping them out of a level's work and its
+  pity fillers - the plans for goals 5 to 18 do, mostly at levels 4, 5, 9 and
+  12. The 20 + 43% route never needs to. Named levels roll only the relics
+  they name, a pity filler only ever uses a spare relic (never a banked
+  one), and past level 20 only the Demon Eye is rolled. Otherwise no relic is
+  avoided, the Demon Eye included: keeping it back for the farm was measured,
+  and costs 0.5% more from level 20 alone, 9% from level 14 - working it in
+  the climb mostly adds glory, which is amplification anyway.
 
 Every decision is made from the board as it stands - the relics, the stock
 and the pity bar - with nothing remembered from earlier attempts, so the
@@ -196,41 +132,7 @@ At level 20 the plan converts every leftover relic into Demon Eyes (10 of a
 type for 7) and farms it, summoning when short, every attempt played for the
 best chance of 43% and then the most amplification.
 
-## Playing one attempt on a 9-slot board (levels 16-18)
-
-Optimal play at level 16:
-
-| | |
-|---|---|
-| glory successes | 6.32 of 9 (one of them free) |
-| despair successes | 2.69 of 9 (lower is better) |
-| amplification | **26.23%** of a possible 45% |
-| wipe | 4.49% |
-| mental training | 8.8 of the 9 available |
-| first rate | 65% (the free glory success counts as a success) |
-
-**The fuel math decides everything.** With the free glory success, both bars
-need 17 fills and you start with 10 spirit power, so at least 4 of your 9
-mental trainings must succeed. Optimal play spends almost all of them. The
-attempt also opens at 65%, not 80%: still a glory rate, but optimal play
-trains there a third of the time to climb back to 80%.
-
-What it actually does, share of decisions at each rate:
-
-| rate | attempt glory | attempt despair | mental training |
-|---|---|---|---|
-| 80% | **59%** | 7% | 33% |
-| 65% | **61%** | 4% | 35% |
-| 50% | 16% | 33% | **51%** |
-| 35% | 6% | **80%** | 14% |
-| 20% | 15% | **72%** | 13% |
-
-The two bars are opposites - a glory success is good, a despair success is bad -
-so the good rates go to glory and the bad rates to despair. The middle rate is
-for mental training: it refills spirit power, and a failed training costs no
-slot and moves the rate back up.
-
-### A rule you can play by hand
+## Playing an attempt: a rule you can play by hand
 
 1. **Out of spirit power:** mental training.
 2. **Fuel:** mental training when you are at least 2 below the spirit power cap,
@@ -242,45 +144,42 @@ slot and moves the rate back up.
    80/65/50%, despair at 50/35/20%) and take mental training otherwise -
    mental strength has no other use by then.
 
-Scored exactly against the optimum:
+**Why it works.** The two bars are opposites - a glory success is good, a
+despair success is bad - so the good rates go to glory and the bad rates to
+despair, and 50% is for mental training: it refills spirit power, and a failed
+training costs no slot and moves the rate back up. Fuel decides the rest:
+from level 12 on, both bars need more fills than you have spirit power (17
+against 10 at levels 16-18), so 3 or 4 trainings must land. Train before you
+run dry, while the rate is still 50% or better.
 
-| level | the rule | optimal | gap | wipe (rule) |
-|---|---|---|---|---|
-| 16 | 24.98% | 26.23% | -1.25 | 3.63% |
-| 19 | 29.24% | 30.74% | -1.50 | 0.35% |
-| 20 | 31.50% | 33.10% | -1.60 | 1.32% |
-
-About 1.25-1.6 points short of perfect play, and it wipes less than the
-optimum on every one of these boards. The one clause not to change is the fuel
-gate. At level 16, training at 50% or better is best; never training wipes 14.8%
-of attempts, and training at any rate still wipes 9.1% because a 20% training
+**How close it gets.** Within 1.25-1.6 points of perfect play - 24.98% at
+level 16 (optimal 26.23%), 29.24% at level 19 (30.74%), 31.50% at level 20
+(33.10%) - and it wipes less than the optimum (3.63%, 0.35% and 1.32%). Keep
+the fuel clause as it is: at level 16, never training wipes 14.8% of
+attempts, and training at any rate still wipes 9.1%, because a 20% training
 fails four times in five.
 
-| mental training at | amplification | wipe |
-|---|---|---|
-| never | 22.79% | 14.79% |
-| 80% or better | 22.52% | 12.81% |
-| 65% or better | 23.45% | 5.64% |
-| **50% or better** | **24.98%** | **3.63%** |
-| 35% or better | 24.13% | 7.53% |
-| any rate | 23.72% | 9.09% |
+## Level 20 and past it: convert everything and farm the Demon Eye
 
-The same rule works on the 8-slot boards (levels 12-15), where only 3
-successful trainings are needed and wipes are rarer (about 2.4-2.6%).
+Level 20 is reached with level-19 attempts, so its 10th slot only matters once
+you are there. By then the climb is over, and every relic left is worth more
+as amplification on the crit relic, the Demon Eye of Weakness:
 
-### Dodging the wipe
+- **Convert everything.** Trade every relic of every other type into Demon
+  Eyes, 10 of one type for 7, the moment level 20 is reached, and keep
+  converting as soon as a type reaches 10 again.
+- **Attempt only the Demon Eye.** Summon when it runs short; nothing else is
+  rolled any more.
+- **Play every attempt to maximize amplification above a target**, the tier
+  you are farming for as the Minimum Useful Amplification: the best chance of
+  reaching it, then the most amplification. If the tier slips out of reach
+  part-way through an attempt, play on for the highest amplification still
+  possible. With level 20 itself as the goal there is no minimum: the
+  leftovers are spent for the most amplification above what the Demon Eye
+  already has.
+- **Keep a result only if it raises the Demon Eye's amplification.**
 
-The optimum already accepts a small wipe chance because a wipe only costs the
-floor (0%). Charging a wipe extra buys safety cheaply at first: at level 16 a
-penalty of 10 cuts the wipe from 4.49% to 3.96% for 0.03 points of
-amplification, and a penalty of 30 gets it to 2.86% for 0.23 points. Driving
-it as low as the rules allow (1.69%) costs 6.7 points.
-
-## Level 20: the 10th slot
-
-Level 20 is reached with level-19 attempts, so its extra slot only matters for
-attempts made once you are there - farming a relic at level 20, which is what
-[COST.md](COST.md) prices.
+The level-20 board itself plays much like level 19's:
 
 - **Four successful trainings again.** The 10th slot brings the fills back to
   18 (20 slots less the two head starts) against the same 10 spirit power, so
@@ -291,146 +190,180 @@ attempts made once you are there - farming a relic at level 20, which is what
   level 19. The extra slot is paid for in fuel.
 - **Play barely changes.** Next to level 19, optimal play trains a little more
   at 65% (33% against 32%) and attempts glory a little more at 50% (11%
-  against 8%); the rule above needs no adjustment.
-- **The hand rule still holds** at 31.50% (1.60 points short) with a 1.32%
-  wipe.
-- **Safety is almost free.** A wipe penalty of 10 takes the wipe from 2.25% to
-  1.90% for 0.01 points; lowering it all the way (0.51%) costs 7.2 points.
+  against 8%); the hand rule above needs no adjustment, and still reaches
+  31.50% (1.60 points short) with a 1.32% wipe.
+
+What each tier asks of one level-20 attempt (the cost from level 20 is the farm
+alone, on the tier's own plan; the total adds the climb):
+
+- **43%** needs 9/1 or better (9/1, 10/3, 9/0, 10/2, 10/1, 10/0). An attempt
+  played for it gets there 7.56% of the time (6.87% played for the most
+  amplification), about 1 in 13. The farm costs 36K from level 20, 1.55M in
+  all.
+- **46%** needs 10/2 or better: 2.71% an attempt (2.26%), about 1 in 37; 151K
+  from level 20, 1.67M in all.
+- **48%** needs 10/1 or better: 1.10% an attempt (1.01%), about 1 in 91;
+  418K from level 20, 1.96M in all.
+- **50%** needs 10/0: 0.16% an attempt (0.15%), about 1 in 625; 3.59M from
+  level 20, 5.25M in all.
+
+Every attempt costs 10 Demon Eyes - 14 or 15 relics of another type once
+converted. Playing for the tier rather than for the most amplification lifts
+the chance by 7-20%, so the farm always plays for its own tier. Every tier
+from 46% up needs a full glory bar, and 50% one with no despair at all: it
+takes about seven times as many attempts as 48%.
 
 ### The level-20 outcome grid
 
-The chance of finishing one level-20 attempt on each exact combination of glory
-and despair successes, under optimal play. Glory rises left to right and despair
-falls from top to bottom, so the best corner (a full glory bar, no despair) is
-bottom right. Cells are shaded relative to the most likely one (15.2%): green
-there, white near zero. The grid sums to 100%.
+The chance of finishing one level-20 attempt on each count of glory and
+despair successes, played for the most amplification. A dot's size grows
+with the chance of that result, on a log scale so the rare results still
+show. Every dot is labelled with its chance (2% or more in bold), and
+hovering one gives its amplification too. The best result, a full glory bar
+with no despair, is the bottom-right corner. The dotted outlines there mark
+every result worth 40% or more (white), 43% or more (green) and 46% or more
+(yellow). The red dot at 0 / 0 is the 2.25% of
+attempts that wipe.
 
-<table style="border-collapse:collapse;font-size:13px;">
-<thead><tr><th style="padding:3px 7px;text-align:right;border:1px solid rgba(128,128,128,.35);font-weight:600;color:#000000;background:#ffffff;">despair &darr; / glory &rarr;</th><th style="padding:3px 7px;text-align:right;border:1px solid rgba(128,128,128,.35);font-weight:600;background:#ffffff;color:#000000;">0</th><th style="padding:3px 7px;text-align:right;border:1px solid rgba(128,128,128,.35);font-weight:600;background:#fbf7eb;color:#000000;">1</th><th style="padding:3px 7px;text-align:right;border:1px solid rgba(128,128,128,.35);font-weight:600;background:#f6efd7;color:#000000;">2</th><th style="padding:3px 7px;text-align:right;border:1px solid rgba(128,128,128,.35);font-weight:600;background:#f2e7c3;color:#000000;">3</th><th style="padding:3px 7px;text-align:right;border:1px solid rgba(128,128,128,.35);font-weight:600;background:#eedfaf;color:#000000;">4</th><th style="padding:3px 7px;text-align:right;border:1px solid rgba(128,128,128,.35);font-weight:600;background:#ead79b;color:#000000;">5</th><th style="padding:3px 7px;text-align:right;border:1px solid rgba(128,128,128,.35);font-weight:600;background:#e5cf87;color:#000000;">6</th><th style="padding:3px 7px;text-align:right;border:1px solid rgba(128,128,128,.35);font-weight:600;background:#e1c773;color:#000000;">7</th><th style="padding:3px 7px;text-align:right;border:1px solid rgba(128,128,128,.35);font-weight:600;background:#ddbf5f;color:#000000;">8</th><th style="padding:3px 7px;text-align:right;border:1px solid rgba(128,128,128,.35);font-weight:600;background:#d8b74b;color:#000000;">9</th><th style="padding:3px 7px;text-align:right;border:1px solid rgba(128,128,128,.35);font-weight:600;background:#d4af37;color:#000000;">10</th></tr></thead>
-<tbody>
-<tr><th style="padding:3px 7px;text-align:right;border:1px solid rgba(128,128,128,.35);font-weight:600;background:#8b0000;color:#000000;">10</th><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="0 glory, 10 despair - amplifies 0%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="1 glory, 10 despair - amplifies 0%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="2 glory, 10 despair - amplifies 0%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="3 glory, 10 despair - amplifies 0%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="4 glory, 10 despair - amplifies 0%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="5 glory, 10 despair - amplifies 5%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="6 glory, 10 despair - amplifies 10%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="7 glory, 10 despair - amplifies 15%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="8 glory, 10 despair - amplifies 20%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="9 glory, 10 despair - amplifies 25%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="10 glory, 10 despair - amplifies 30%">0%</td></tr>
-<tr><th style="padding:3px 7px;text-align:right;border:1px solid rgba(128,128,128,.35);font-weight:600;background:#971a1a;color:#000000;">9</th><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="0 glory, 9 despair - amplifies 0%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="1 glory, 9 despair - amplifies 0%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="2 glory, 9 despair - amplifies 0%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="3 glory, 9 despair - amplifies 0%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="4 glory, 9 despair - amplifies 2%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="5 glory, 9 despair - amplifies 7%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="6 glory, 9 despair - amplifies 12%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="7 glory, 9 despair - amplifies 17%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="8 glory, 9 despair - amplifies 22%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="9 glory, 9 despair - amplifies 27%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="10 glory, 9 despair - amplifies 32%">0%</td></tr>
-<tr><th style="padding:3px 7px;text-align:right;border:1px solid rgba(128,128,128,.35);font-weight:600;background:#a23333;color:#000000;">8</th><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="0 glory, 8 despair - amplifies 0%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="1 glory, 8 despair - amplifies 0%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="2 glory, 8 despair - amplifies 0%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="3 glory, 8 despair - amplifies 0%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="4 glory, 8 despair - amplifies 4%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="5 glory, 8 despair - amplifies 9%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="6 glory, 8 despair - amplifies 14%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="7 glory, 8 despair - amplifies 19%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="8 glory, 8 despair - amplifies 24%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="9 glory, 8 despair - amplifies 29%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="10 glory, 8 despair - amplifies 34%">0%</td></tr>
-<tr><th style="padding:3px 7px;text-align:right;border:1px solid rgba(128,128,128,.35);font-weight:600;background:#ae4c4c;color:#000000;">7</th><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="0 glory, 7 despair - amplifies 0%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="1 glory, 7 despair - amplifies 0%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="2 glory, 7 despair - amplifies 0%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="3 glory, 7 despair - amplifies 1%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="4 glory, 7 despair - amplifies 6%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="5 glory, 7 despair - amplifies 11%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="6 glory, 7 despair - amplifies 16%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="7 glory, 7 despair - amplifies 21%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="8 glory, 7 despair - amplifies 26%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="9 glory, 7 despair - amplifies 31%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="10 glory, 7 despair - amplifies 36%">0%</td></tr>
-<tr><th style="padding:3px 7px;text-align:right;border:1px solid rgba(128,128,128,.35);font-weight:600;background:#b96666;color:#000000;">6</th><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="0 glory, 6 despair - amplifies 0%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="1 glory, 6 despair - amplifies 0%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="2 glory, 6 despair - amplifies 0%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="3 glory, 6 despair - amplifies 3%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="4 glory, 6 despair - amplifies 8%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="5 glory, 6 despair - amplifies 13%">0.01%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#fefffe;color:#000000;" title="6 glory, 6 despair - amplifies 18%">0.05%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#fefffd;color:#000000;" title="7 glory, 6 despair - amplifies 23%">0.09%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#fffffe;color:#000000;" title="8 glory, 6 despair - amplifies 28%">0.04%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="9 glory, 6 despair - amplifies 33%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="10 glory, 6 despair - amplifies 38%">0%</td></tr>
-<tr><th style="padding:3px 7px;text-align:right;border:1px solid rgba(128,128,128,.35);font-weight:600;background:#c58080;color:#000000;">5</th><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="0 glory, 5 despair - amplifies 0%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="1 glory, 5 despair - amplifies 0%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="2 glory, 5 despair - amplifies 0%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="3 glory, 5 despair - amplifies 5%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="4 glory, 5 despair - amplifies 10%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#fefffe;color:#000000;" title="5 glory, 5 despair - amplifies 15%">0.06%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#f9fdf5;color:#000000;" title="6 glory, 5 despair - amplifies 20%">0.50%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#f0f9e6;color:#000000;" title="7 glory, 5 despair - amplifies 25%">1.27%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#f6fbf0;color:#000000;" title="8 glory, 5 despair - amplifies 30%">0.76%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#fefefd;color:#000000;" title="9 glory, 5 despair - amplifies 35%">0.11%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="10 glory, 5 despair - amplifies 40%">0%</td></tr>
-<tr><th style="padding:3px 7px;text-align:right;border:1px solid rgba(128,128,128,.35);font-weight:600;background:#d19999;color:#000000;">4</th><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="0 glory, 4 despair - amplifies 0%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="1 glory, 4 despair - amplifies 0%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="2 glory, 4 despair - amplifies 2%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="3 glory, 4 despair - amplifies 7%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="4 glory, 4 despair - amplifies 12%">0.01%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#fdfefb;color:#000000;" title="5 glory, 4 despair - amplifies 17%">0.20%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#eaf6dd;color:#000000;" title="6 glory, 4 despair - amplifies 22%">1.76%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#b8e188;color:#000000;" title="7 glory, 4 despair - amplifies 27%">6.10%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#b6e086;color:#000000;" title="8 glory, 4 despair - amplifies 32%">6.20%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#eef8e3;color:#000000;" title="9 glory, 4 despair - amplifies 37%">1.43%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#fefffe;color:#000000;" title="10 glory, 4 despair - amplifies 42%">0.06%</td></tr>
-<tr><th style="padding:3px 7px;text-align:right;border:1px solid rgba(128,128,128,.35);font-weight:600;background:#dcb2b2;color:#000000;">3</th><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="0 glory, 3 despair - amplifies 0%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="1 glory, 3 despair - amplifies 0%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="2 glory, 3 despair - amplifies 4%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="3 glory, 3 despair - amplifies 9%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="4 glory, 3 despair - amplifies 14%">0.02%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#fcfefa;color:#000000;" title="5 glory, 3 despair - amplifies 19%">0.28%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#e1f2cc;color:#000000;" title="6 glory, 3 despair - amplifies 24%">2.59%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#72c160;color:#000000;" title="7 glory, 3 despair - amplifies 29%">10.4%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#1a9850;color:#000000;" title="8 glory, 3 despair - amplifies 34%">15.2%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#b5df83;color:#000000;" title="9 glory, 3 despair - amplifies 39%">6.32%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#f9fcf5;color:#000000;" title="10 glory, 3 despair - amplifies 44%">0.52%</td></tr>
-<tr><th style="padding:3px 7px;text-align:right;border:1px solid rgba(128,128,128,.35);font-weight:600;background:#e8cccc;color:#000000;">2</th><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="0 glory, 2 despair - amplifies 0%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="1 glory, 2 despair - amplifies 1%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="2 glory, 2 despair - amplifies 6%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="3 glory, 2 despair - amplifies 11%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="4 glory, 2 despair - amplifies 16%">0.01%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#fdfefc;color:#000000;" title="5 glory, 2 despair - amplifies 21%">0.15%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#edf7e1;color:#000000;" title="6 glory, 2 despair - amplifies 26%">1.54%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#acdc74;color:#000000;" title="7 glory, 2 despair - amplifies 31%">7.11%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#41aa57;color:#000000;" title="8 glory, 2 despair - amplifies 36%">13.1%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#99d368;color:#000000;" title="9 glory, 2 despair - amplifies 41%">8.34%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#f0f9e7;color:#000000;" title="10 glory, 2 despair - amplifies 46%">1.25%</td></tr>
-<tr><th style="padding:3px 7px;text-align:right;border:1px solid rgba(128,128,128,.35);font-weight:600;background:#f3e6e6;color:#000000;">1</th><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="0 glory, 1 despair - amplifies 0%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="1 glory, 1 despair - amplifies 3%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="2 glory, 1 despair - amplifies 8%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="3 glory, 1 despair - amplifies 13%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="4 glory, 1 despair - amplifies 18%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#fffffe;color:#000000;" title="5 glory, 1 despair - amplifies 23%">0.03%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#fbfdf8;color:#000000;" title="6 glory, 1 despair - amplifies 28%">0.34%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#e9f6da;color:#000000;" title="7 glory, 1 despair - amplifies 33%">1.87%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#cdeaab;color:#000000;" title="8 glory, 1 despair - amplifies 38%">4.28%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#d5edb8;color:#000000;" title="9 glory, 1 despair - amplifies 43%">3.62%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#f5fbee;color:#000000;" title="10 glory, 1 despair - amplifies 48%">0.86%</td></tr>
-<tr><th style="padding:3px 7px;text-align:right;border:1px solid rgba(128,128,128,.35);font-weight:600;background:#ffffff;color:#000000;">0</th><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#e5f4d3;color:#000000;" title="0 glory, 0 despair - amplifies 0%">2.25%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="1 glory, 0 despair - amplifies 5%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="2 glory, 0 despair - amplifies 10%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="3 glory, 0 despair - amplifies 15%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="4 glory, 0 despair - amplifies 20%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="5 glory, 0 despair - amplifies 25%">0%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#ffffff;color:#000000;" title="6 glory, 0 despair - amplifies 30%">0.02%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#fdfefc;color:#000000;" title="7 glory, 0 despair - amplifies 35%">0.15%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#fafdf7;color:#000000;" title="8 glory, 0 despair - amplifies 40%">0.43%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#fafdf6;color:#000000;" title="9 glory, 0 despair - amplifies 45%">0.47%</td><td style="padding:3px 7px;text-align:right;font-variant-numeric:tabular-nums;border:1px solid rgba(128,128,128,.35);background:#fdfefc;color:#000000;" title="10 glory, 0 despair - amplifies 50%">0.15%</td></tr>
-</tbody></table>
-
-The same attempts by the amplification they pay. The red column is the 0%
-floor: the 2.2% of attempts that wipe, plus any that wash out below zero.
-
-<svg viewBox="0 0 519 272" width="519" height="272" role="img" xmlns="http://www.w3.org/2000/svg" aria-label="Distribution of relic amplification at inheritor level 20">
-<title>Amplification distribution, inheritor level 20</title>
-<desc>Chance of each exact amplification under optimal weighted play. Mean 33.10 percent. Peak 15.2 percent of attempts at an amplification of 34 percent.</desc>
-<style>.ac-bar{fill:#2a78d6}.ac-wipe{fill:#d03b3b}.ac-grid{stroke:#e1e0d9;stroke-width:1}.ac-axis{stroke:#c3c2b7;stroke-width:1}.ac-ink{fill:#52514e}.ac-muted{fill:#898781}.ac-mean{stroke:#52514e}.ac-t{font:11px system-ui,-apple-system,'Segoe UI',sans-serif}.ac-b{font:600 11px system-ui,-apple-system,'Segoe UI',sans-serif}@media(prefers-color-scheme:dark){.ac-bar{fill:#3987e5}.ac-grid{stroke:#2c2c2a}.ac-axis{stroke:#383835}.ac-ink{fill:#c3c2b7}.ac-mean{stroke:#c3c2b7}}</style>
-<line class="ac-grid" x1="46" y1="236.0" x2="505" y2="236.0"/>
-<text class="ac-t ac-muted" x="38" y="240.0" text-anchor="end">0%</text>
-<line class="ac-grid" x1="46" y1="183.5" x2="505" y2="183.5"/>
-<text class="ac-t ac-muted" x="38" y="187.5" text-anchor="end">5%</text>
-<line class="ac-grid" x1="46" y1="131.0" x2="505" y2="131.0"/>
-<text class="ac-t ac-muted" x="38" y="135.0" text-anchor="end">10%</text>
-<line class="ac-grid" x1="46" y1="78.5" x2="505" y2="78.5"/>
-<text class="ac-t ac-muted" x="38" y="82.5" text-anchor="end">15%</text>
-<line class="ac-grid" x1="46" y1="26.0" x2="505" y2="26.0"/>
-<text class="ac-t ac-muted" x="38" y="30.0" text-anchor="end">20%</text>
-<text class="ac-t ac-muted" x="38" y="17" text-anchor="end">chance</text>
-<path class="ac-wipe" d="M47.0,236 V215.4 Q47.0,212.4 50.0,212.4 H51.0 Q54.0,212.4 54.0,215.4 V236 Z"><title>amplification 0: 2.25%</title></path>
-<path class="ac-bar" d="M56.0,236 V236.0 Q56.0,236.0 56.0,236.0 H63.0 Q63.0,236.0 63.0,236.0 V236 Z"><title>amplification 1: 0%</title></path>
-<path class="ac-bar" d="M65.0,236 V236.0 Q65.0,236.0 65.0,236.0 H72.0 Q72.0,236.0 72.0,236.0 V236 Z"><title>amplification 2: 0%</title></path>
-<path class="ac-bar" d="M74.0,236 V236.0 Q74.0,236.0 74.0,236.0 H81.0 Q81.0,236.0 81.0,236.0 V236 Z"><title>amplification 3: 0%</title></path>
-<path class="ac-bar" d="M83.0,236 V236.0 Q83.0,236.0 83.0,236.0 H90.0 Q90.0,236.0 90.0,236.0 V236 Z"><title>amplification 4: 0%</title></path>
-<path class="ac-bar" d="M92.0,236 V236.0 Q92.0,236.0 92.0,236.0 H99.0 Q99.0,236.0 99.0,236.0 V236 Z"><title>amplification 5: 0%</title></path>
-<path class="ac-bar" d="M101.0,236 V236.0 Q101.0,236.0 101.0,236.0 H108.0 Q108.0,236.0 108.0,236.0 V236 Z"><title>amplification 6: 0%</title></path>
-<path class="ac-bar" d="M110.0,236 V236.0 Q110.0,236.0 110.0,236.0 H117.0 Q117.0,236.0 117.0,236.0 V236 Z"><title>amplification 7: 0%</title></path>
-<path class="ac-bar" d="M119.0,236 V236.0 Q119.0,236.0 119.0,236.0 H126.0 Q126.0,236.0 126.0,236.0 V236 Z"><title>amplification 8: 0%</title></path>
-<path class="ac-bar" d="M128.0,236 V236.0 Q128.0,236.0 128.0,236.0 H135.0 Q135.0,236.0 135.0,236.0 V236 Z"><title>amplification 9: 0%</title></path>
-<path class="ac-bar" d="M137.0,236 V236.0 Q137.0,236.0 137.0,236.0 H144.0 Q144.0,236.0 144.0,236.0 V236 Z"><title>amplification 10: 0%</title></path>
-<path class="ac-bar" d="M146.0,236 V236.0 Q146.0,236.0 146.0,236.0 H153.0 Q153.0,236.0 153.0,236.0 V236 Z"><title>amplification 11: 0%</title></path>
-<path class="ac-bar" d="M155.0,236 V236.0 Q155.0,235.9 155.1,235.9 H161.9 Q162.0,235.9 162.0,236.0 V236 Z"><title>amplification 12: 0.01%</title></path>
-<path class="ac-bar" d="M164.0,236 V236.0 Q164.0,235.9 164.1,235.9 H170.9 Q171.0,235.9 171.0,236.0 V236 Z"><title>amplification 13: 0.01%</title></path>
-<path class="ac-bar" d="M173.0,236 V236.0 Q173.0,235.8 173.2,235.8 H179.8 Q180.0,235.8 180.0,236.0 V236 Z"><title>amplification 14: 0.02%</title></path>
-<path class="ac-bar" d="M182.0,236 V236.0 Q182.0,235.4 182.6,235.4 H188.4 Q189.0,235.4 189.0,236.0 V236 Z"><title>amplification 15: 0.06%</title></path>
-<path class="ac-bar" d="M191.0,236 V236.0 Q191.0,235.9 191.1,235.9 H197.9 Q198.0,235.9 198.0,236.0 V236 Z"><title>amplification 16: 0.01%</title></path>
-<path class="ac-bar" d="M200.0,236 V236.0 Q200.0,233.9 202.1,233.9 H204.9 Q207.0,233.9 207.0,236.0 V236 Z"><title>amplification 17: 0.20%</title></path>
-<path class="ac-bar" d="M209.0,236 V236.0 Q209.0,235.4 209.6,235.4 H215.4 Q216.0,235.4 216.0,236.0 V236 Z"><title>amplification 18: 0.05%</title></path>
-<path class="ac-bar" d="M218.0,236 V236.0 Q218.0,233.1 220.9,233.1 H222.1 Q225.0,233.1 225.0,236.0 V236 Z"><title>amplification 19: 0.28%</title></path>
-<path class="ac-bar" d="M227.0,236 V233.8 Q227.0,230.8 230.0,230.8 H231.0 Q234.0,230.8 234.0,233.8 V236 Z"><title>amplification 20: 0.50%</title></path>
-<path class="ac-bar" d="M236.0,236 V236.0 Q236.0,234.4 237.6,234.4 H241.4 Q243.0,234.4 243.0,236.0 V236 Z"><title>amplification 21: 0.16%</title></path>
-<path class="ac-bar" d="M245.0,236 V220.6 Q245.0,217.6 248.0,217.6 H249.0 Q252.0,217.6 252.0,220.6 V236 Z"><title>amplification 22: 1.76%</title></path>
-<path class="ac-bar" d="M254.0,236 V236.0 Q254.0,234.8 255.2,234.8 H259.8 Q261.0,234.8 261.0,236.0 V236 Z"><title>amplification 23: 0.12%</title></path>
-<path class="ac-bar" d="M263.0,236 V211.8 Q263.0,208.8 266.0,208.8 H267.0 Q270.0,208.8 270.0,211.8 V236 Z"><title>amplification 24: 2.59%</title></path>
-<path class="ac-bar" d="M272.0,236 V225.6 Q272.0,222.6 275.0,222.6 H276.0 Q279.0,222.6 279.0,225.6 V236 Z"><title>amplification 25: 1.27%</title></path>
-<path class="ac-bar" d="M281.0,236 V222.8 Q281.0,219.8 284.0,219.8 H285.0 Q288.0,219.8 288.0,222.8 V236 Z"><title>amplification 26: 1.55%</title></path>
-<path class="ac-bar" d="M290.0,236 V174.9 Q290.0,171.9 293.0,171.9 H294.0 Q297.0,171.9 297.0,174.9 V236 Z"><title>amplification 27: 6.10%</title></path>
-<path class="ac-bar" d="M299.0,236 V235.0 Q299.0,232.0 302.0,232.0 H303.0 Q306.0,232.0 306.0,235.0 V236 Z"><title>amplification 28: 0.38%</title></path>
-<path class="ac-bar" d="M308.0,236 V129.6 Q308.0,126.6 311.0,126.6 H312.0 Q315.0,126.6 315.0,129.6 V236 Z"><title>amplification 29: 10.4%</title></path>
-<path class="ac-bar" d="M317.0,236 V230.8 Q317.0,227.8 320.0,227.8 H321.0 Q324.0,227.8 324.0,230.8 V236 Z"><title>amplification 30: 0.78%</title></path>
-<path class="ac-bar" d="M326.0,236 V164.4 Q326.0,161.4 329.0,161.4 H330.0 Q333.0,161.4 333.0,164.4 V236 Z"><title>amplification 31: 7.11%</title></path>
-<path class="ac-bar" d="M335.0,236 V173.9 Q335.0,170.9 338.0,170.9 H339.0 Q342.0,170.9 342.0,173.9 V236 Z"><title>amplification 32: 6.20%</title></path>
-<path class="ac-bar" d="M344.0,236 V219.3 Q344.0,216.3 347.0,216.3 H348.0 Q351.0,216.3 351.0,219.3 V236 Z"><title>amplification 33: 1.88%</title></path>
-<path class="ac-bar" d="M353.0,236 V79.1 Q353.0,76.1 356.0,76.1 H357.0 Q360.0,76.1 360.0,79.1 V236 Z"><title>amplification 34: 15.2%</title></path>
-<path class="ac-bar" d="M362.0,236 V236.0 Q362.0,233.3 364.7,233.3 H366.3 Q369.0,233.3 369.0,236.0 V236 Z"><title>amplification 35: 0.26%</title></path>
-<path class="ac-bar" d="M371.0,236 V101.3 Q371.0,98.3 374.0,98.3 H375.0 Q378.0,98.3 378.0,101.3 V236 Z"><title>amplification 36: 13.1%</title></path>
-<path class="ac-bar" d="M380.0,236 V224.0 Q380.0,221.0 383.0,221.0 H384.0 Q387.0,221.0 387.0,224.0 V236 Z"><title>amplification 37: 1.43%</title></path>
-<path class="ac-bar" d="M389.0,236 V194.1 Q389.0,191.1 392.0,191.1 H393.0 Q396.0,191.1 396.0,194.1 V236 Z"><title>amplification 38: 4.28%</title></path>
-<path class="ac-bar" d="M398.0,236 V172.7 Q398.0,169.7 401.0,169.7 H402.0 Q405.0,169.7 405.0,172.7 V236 Z"><title>amplification 39: 6.32%</title></path>
-<path class="ac-bar" d="M407.0,236 V234.5 Q407.0,231.5 410.0,231.5 H411.0 Q414.0,231.5 414.0,234.5 V236 Z"><title>amplification 40: 0.43%</title></path>
-<path class="ac-bar" d="M416.0,236 V151.5 Q416.0,148.5 419.0,148.5 H420.0 Q423.0,148.5 423.0,151.5 V236 Z"><title>amplification 41: 8.34%</title></path>
-<path class="ac-bar" d="M425.0,236 V236.0 Q425.0,235.3 425.7,235.3 H431.3 Q432.0,235.3 432.0,236.0 V236 Z"><title>amplification 42: 0.06%</title></path>
-<path class="ac-bar" d="M434.0,236 V201.0 Q434.0,198.0 437.0,198.0 H438.0 Q441.0,198.0 441.0,201.0 V236 Z"><title>amplification 43: 3.62%</title></path>
-<path class="ac-bar" d="M443.0,236 V233.6 Q443.0,230.6 446.0,230.6 H447.0 Q450.0,230.6 450.0,233.6 V236 Z"><title>amplification 44: 0.52%</title></path>
-<path class="ac-bar" d="M452.0,236 V234.1 Q452.0,231.1 455.0,231.1 H456.0 Q459.0,231.1 459.0,234.1 V236 Z"><title>amplification 45: 0.47%</title></path>
-<path class="ac-bar" d="M461.0,236 V225.9 Q461.0,222.9 464.0,222.9 H465.0 Q468.0,222.9 468.0,225.9 V236 Z"><title>amplification 46: 1.25%</title></path>
-<path class="ac-bar" d="M479.0,236 V230.0 Q479.0,227.0 482.0,227.0 H483.0 Q486.0,227.0 486.0,230.0 V236 Z"><title>amplification 48: 0.86%</title></path>
-<path class="ac-bar" d="M497.0,236 V236.0 Q497.0,234.4 498.6,234.4 H502.4 Q504.0,234.4 504.0,236.0 V236 Z"><title>amplification 50: 0.15%</title></path>
-<line class="ac-axis" x1="46" y1="236" x2="505" y2="236"/>
-<text class="ac-t ac-muted" x="50.5" y="251" text-anchor="middle">0%</text>
-<text class="ac-t ac-muted" x="140.5" y="251" text-anchor="middle">10%</text>
-<text class="ac-t ac-muted" x="230.5" y="251" text-anchor="middle">20%</text>
-<text class="ac-t ac-muted" x="320.5" y="251" text-anchor="middle">30%</text>
-<text class="ac-t ac-muted" x="410.5" y="251" text-anchor="middle">40%</text>
-<text class="ac-t ac-muted" x="500.5" y="251" text-anchor="middle">50%</text>
-<text class="ac-t ac-muted" x="275.5" y="266" text-anchor="middle">amplification (+5% per glory success, -2% per despair success)</text>
-<line class="ac-mean" x1="348.4" y1="20" x2="348.4" y2="236" stroke-dasharray="3 3" stroke-width="1.5"/>
-<text class="ac-b ac-ink" x="353.4" y="14">mean 33.1%</text>
-<text class="ac-b ac-wipe" x="56.5" y="204.4" text-anchor="start">wipe 2.25%</text>
+<svg viewBox="0 0 748 620" width="748" height="620" role="img" xmlns="http://www.w3.org/2000/svg" aria-label="Level-20 outcome grid">
+<title>Level 20 Outcome Distribution (Maximizing Amplification)</title>
+<desc>The chance of finishing one level-20 attempt, played for the most amplification, on each count of glory and despair successes. Dot size grows with the chance, on a log scale. The most likely result is 8 glory, 3 despair at 15.2%. The dotted outlines are the results worth 40%, 43% and 46% or more; the red dot at 0 glory, 0 despair is the 2.25% of attempts that wipe.</desc>
+<style>.og-dot{fill:#2a78d6}.og-wipe{fill:#d03b3b}.og-glory{fill:#9a7700}.og-despair{fill:#b3261e}.og-grid{stroke:#e1e0d9;stroke-width:1}.og-axis{stroke:#c3c2b7;stroke-width:1;fill:none}.og-ink{fill:#52514e}.og-muted{fill:#898781}.og-tier{stroke-width:2;stroke-dasharray:0.5 4.5;stroke-linecap:round;fill:none}.og-t40{stroke:#52514e}.og-t40t{fill:#52514e}.og-t43{stroke:#2e8b3d}.og-t43t{fill:#2e7d32}.og-t46{stroke:#e0b000}.og-t46t{fill:#9a7700}.og-halo{paint-order:stroke;stroke:#ffffff;stroke-width:3px;stroke-linejoin:round}.og-t{font:11px system-ui,-apple-system,'Segoe UI',sans-serif}.og-b{font:600 11px system-ui,-apple-system,'Segoe UI',sans-serif}.og-s{font:10px system-ui,-apple-system,'Segoe UI',sans-serif}.og-ti{font:600 15px system-ui,-apple-system,'Segoe UI',sans-serif}.og-h{font:600 12px system-ui,-apple-system,'Segoe UI',sans-serif}@media(prefers-color-scheme:dark){.og-dot{fill:#3987e5}.og-wipe{fill:#e5584a}.og-glory{fill:#f2c94c}.og-despair{fill:#f28b82}.og-grid{stroke:#2c2c2a}.og-axis{stroke:#383835}.og-ink{fill:#c3c2b7}.og-t40{stroke:#ffffff}.og-t40t{fill:#ffffff}.og-t43{stroke:#5cc96b}.og-t43t{fill:#5cc96b}.og-t46{stroke:#f2c94c}.og-t46t{fill:#f2c94c}.og-halo{stroke:#1f1f1e}}</style>
+<text class="og-ti og-ink" x="349.0" y="26" text-anchor="middle">Level 20 Outcome Distribution (Maximizing Amplification)</text>
+<line class="og-grid" x1="99.0" y1="64" x2="99.0" y2="564"/>
+<line class="og-grid" x1="149.0" y1="64" x2="149.0" y2="564"/>
+<line class="og-grid" x1="199.0" y1="64" x2="199.0" y2="564"/>
+<line class="og-grid" x1="249.0" y1="64" x2="249.0" y2="564"/>
+<line class="og-grid" x1="299.0" y1="64" x2="299.0" y2="564"/>
+<line class="og-grid" x1="349.0" y1="64" x2="349.0" y2="564"/>
+<line class="og-grid" x1="399.0" y1="64" x2="399.0" y2="564"/>
+<line class="og-grid" x1="449.0" y1="64" x2="449.0" y2="564"/>
+<line class="og-grid" x1="499.0" y1="64" x2="499.0" y2="564"/>
+<line class="og-grid" x1="549.0" y1="64" x2="549.0" y2="564"/>
+<line class="og-grid" x1="599.0" y1="64" x2="599.0" y2="564"/>
+<line class="og-grid" x1="74" y1="539.0" x2="624" y2="539.0"/>
+<line class="og-grid" x1="74" y1="489.0" x2="624" y2="489.0"/>
+<line class="og-grid" x1="74" y1="439.0" x2="624" y2="439.0"/>
+<line class="og-grid" x1="74" y1="389.0" x2="624" y2="389.0"/>
+<line class="og-grid" x1="74" y1="339.0" x2="624" y2="339.0"/>
+<line class="og-grid" x1="74" y1="289.0" x2="624" y2="289.0"/>
+<line class="og-grid" x1="74" y1="239.0" x2="624" y2="239.0"/>
+<line class="og-grid" x1="74" y1="189.0" x2="624" y2="189.0"/>
+<line class="og-grid" x1="74" y1="139.0" x2="624" y2="139.0"/>
+<line class="og-grid" x1="74" y1="89.0" x2="624" y2="89.0"/>
+<polyline class="og-axis" points="74,64 74,564 624,564"/>
+<text class="og-t og-glory" x="99.0" y="580" text-anchor="middle">0</text>
+<text class="og-t og-glory" x="149.0" y="580" text-anchor="middle">1</text>
+<text class="og-t og-glory" x="199.0" y="580" text-anchor="middle">2</text>
+<text class="og-t og-glory" x="249.0" y="580" text-anchor="middle">3</text>
+<text class="og-t og-glory" x="299.0" y="580" text-anchor="middle">4</text>
+<text class="og-t og-glory" x="349.0" y="580" text-anchor="middle">5</text>
+<text class="og-t og-glory" x="399.0" y="580" text-anchor="middle">6</text>
+<text class="og-t og-glory" x="449.0" y="580" text-anchor="middle">7</text>
+<text class="og-t og-glory" x="499.0" y="580" text-anchor="middle">8</text>
+<text class="og-t og-glory" x="549.0" y="580" text-anchor="middle">9</text>
+<text class="og-t og-glory" x="599.0" y="580" text-anchor="middle">10</text>
+<text class="og-t og-despair" x="66" y="543.0" text-anchor="end">0</text>
+<text class="og-t og-despair" x="66" y="493.0" text-anchor="end">1</text>
+<text class="og-t og-despair" x="66" y="443.0" text-anchor="end">2</text>
+<text class="og-t og-despair" x="66" y="393.0" text-anchor="end">3</text>
+<text class="og-t og-despair" x="66" y="343.0" text-anchor="end">4</text>
+<text class="og-t og-despair" x="66" y="293.0" text-anchor="end">5</text>
+<text class="og-t og-despair" x="66" y="243.0" text-anchor="end">6</text>
+<text class="og-t og-despair" x="66" y="193.0" text-anchor="end">7</text>
+<text class="og-t og-despair" x="66" y="143.0" text-anchor="end">8</text>
+<text class="og-t og-despair" x="66" y="93.0" text-anchor="end">9</text>
+<text class="og-h og-glory" x="349.0" y="606" text-anchor="middle">glory successes</text>
+<text class="og-h og-despair" x="0" y="0" text-anchor="middle" transform="translate(34,314.0) rotate(-90)">despair successes</text>
+<path class="og-tier og-t40" d="M475.5,562.5 V515.5 H525.5 V415.5 H575.5 V265.5 H622.5 V562.5 Z"/>
+<text class="og-b og-t40t" x="632" y="275.5">40% amplification</text>
+<path class="og-tier og-t43" d="M529,559 V469 H579 V369 H619 V559 Z"/>
+<text class="og-b og-t43t" x="632" y="379">43% amplification</text>
+<path class="og-tier og-t46" d="M582.5,555.5 V422.5 H615.5 V555.5 Z"/>
+<text class="og-b og-t46t" x="632" y="432.5">46% amplification</text>
+<circle class="og-dot" cx="299.0" cy="439.0" r="2.5"><title>4 glory, 2 despair: 0.01% (16% amplification)</title></circle>
+<circle class="og-dot" cx="299.0" cy="339.0" r="2.5"><title>4 glory, 4 despair: 0.01% (12% amplification)</title></circle>
+<circle class="og-dot" cx="349.0" cy="239.0" r="2.5"><title>5 glory, 6 despair: 0.01% (13% amplification)</title></circle>
+<circle class="og-dot" cx="299.0" cy="389.0" r="4.4"><title>4 glory, 3 despair: 0.02% (14% amplification)</title></circle>
+<circle class="og-dot" cx="399.0" cy="539.0" r="4.4"><title>6 glory, 0 despair: 0.02% (30% amplification)</title></circle>
+<circle class="og-dot" cx="349.0" cy="489.0" r="5.6"><title>5 glory, 1 despair: 0.03% (23% amplification)</title></circle>
+<circle class="og-dot" cx="499.0" cy="239.0" r="6.4"><title>8 glory, 6 despair: 0.04% (28% amplification)</title></circle>
+<circle class="og-dot" cx="399.0" cy="239.0" r="7.0"><title>6 glory, 6 despair: 0.05% (18% amplification)</title></circle>
+<circle class="og-dot" cx="349.0" cy="289.0" r="7.5"><title>5 glory, 5 despair: 0.06% (15% amplification)</title></circle>
+<circle class="og-dot" cx="599.0" cy="339.0" r="7.5"><title>10 glory, 4 despair: 0.06% (42% amplification)</title></circle>
+<circle class="og-dot" cx="449.0" cy="239.0" r="8.6"><title>7 glory, 6 despair: 0.09% (23% amplification)</title></circle>
+<circle class="og-dot" cx="549.0" cy="289.0" r="9.2"><title>9 glory, 5 despair: 0.11% (35% amplification)</title></circle>
+<circle class="og-dot" cx="349.0" cy="439.0" r="10.1"><title>5 glory, 2 despair: 0.15% (21% amplification)</title></circle>
+<circle class="og-dot" cx="449.0" cy="539.0" r="10.1"><title>7 glory, 0 despair: 0.15% (35% amplification)</title></circle>
+<circle class="og-dot" cx="599.0" cy="539.0" r="10.1"><title>10 glory, 0 despair: 0.15% (50% amplification)</title></circle>
+<circle class="og-dot" cx="349.0" cy="339.0" r="10.9"><title>5 glory, 4 despair: 0.2% (17% amplification)</title></circle>
+<circle class="og-dot" cx="349.0" cy="389.0" r="11.8"><title>5 glory, 3 despair: 0.28% (19% amplification)</title></circle>
+<circle class="og-dot" cx="399.0" cy="489.0" r="12.4"><title>6 glory, 1 despair: 0.34% (28% amplification)</title></circle>
+<circle class="og-dot" cx="499.0" cy="539.0" r="13.0"><title>8 glory, 0 despair: 0.43% (40% amplification)</title></circle>
+<circle class="og-dot" cx="549.0" cy="539.0" r="13.3"><title>9 glory, 0 despair: 0.47% (45% amplification)</title></circle>
+<circle class="og-dot" cx="399.0" cy="289.0" r="13.4"><title>6 glory, 5 despair: 0.5% (20% amplification)</title></circle>
+<circle class="og-dot" cx="599.0" cy="389.0" r="13.6"><title>10 glory, 3 despair: 0.52% (44% amplification)</title></circle>
+<circle class="og-dot" cx="499.0" cy="289.0" r="14.6"><title>8 glory, 5 despair: 0.76% (30% amplification)</title></circle>
+<circle class="og-dot" cx="599.0" cy="489.0" r="15.0"><title>10 glory, 1 despair: 0.86% (48% amplification)</title></circle>
+<circle class="og-dot" cx="599.0" cy="439.0" r="16.0"><title>10 glory, 2 despair: 1.25% (46% amplification)</title></circle>
+<circle class="og-dot" cx="449.0" cy="289.0" r="16.1"><title>7 glory, 5 despair: 1.27% (25% amplification)</title></circle>
+<circle class="og-dot" cx="549.0" cy="339.0" r="16.4"><title>9 glory, 4 despair: 1.43% (37% amplification)</title></circle>
+<circle class="og-dot" cx="399.0" cy="439.0" r="16.6"><title>6 glory, 2 despair: 1.54% (26% amplification)</title></circle>
+<circle class="og-dot" cx="399.0" cy="339.0" r="17.0"><title>6 glory, 4 despair: 1.76% (22% amplification)</title></circle>
+<circle class="og-dot" cx="449.0" cy="489.0" r="17.1"><title>7 glory, 1 despair: 1.87% (33% amplification)</title></circle>
+<circle class="og-wipe" cx="99.0" cy="539.0" r="17.7"><title>0 glory, 0 despair: 2.25% (a wipe - nothing inherited)</title></circle>
+<circle class="og-dot" cx="399.0" cy="389.0" r="18.0"><title>6 glory, 3 despair: 2.59% (24% amplification)</title></circle>
+<circle class="og-dot" cx="549.0" cy="489.0" r="19.0"><title>9 glory, 1 despair: 3.62% (43% amplification)</title></circle>
+<circle class="og-dot" cx="499.0" cy="489.0" r="19.5"><title>8 glory, 1 despair: 4.28% (38% amplification)</title></circle>
+<circle class="og-dot" cx="449.0" cy="339.0" r="20.4"><title>7 glory, 4 despair: 6.1% (27% amplification)</title></circle>
+<circle class="og-dot" cx="499.0" cy="339.0" r="20.5"><title>8 glory, 4 despair: 6.2% (32% amplification)</title></circle>
+<circle class="og-dot" cx="549.0" cy="389.0" r="20.5"><title>9 glory, 3 despair: 6.32% (39% amplification)</title></circle>
+<circle class="og-dot" cx="449.0" cy="439.0" r="20.9"><title>7 glory, 2 despair: 7.11% (31% amplification)</title></circle>
+<circle class="og-dot" cx="549.0" cy="439.0" r="21.3"><title>9 glory, 2 despair: 8.34% (41% amplification)</title></circle>
+<circle class="og-dot" cx="449.0" cy="389.0" r="21.9"><title>7 glory, 3 despair: 10.4% (29% amplification)</title></circle>
+<circle class="og-dot" cx="499.0" cy="439.0" r="22.6"><title>8 glory, 2 despair: 13.1% (36% amplification)</title></circle>
+<circle class="og-dot" cx="499.0" cy="389.0" r="23.0"><title>8 glory, 3 despair: 15.2% (34% amplification)</title></circle>
+<text class="og-b og-ink og-halo" x="99.0" y="543.0" text-anchor="middle">2.25%</text>
+<text class="og-s og-ink og-halo" x="299.0" y="443.0" text-anchor="middle">0.01%</text>
+<text class="og-s og-ink og-halo" x="299.0" y="393.0" text-anchor="middle">0.02%</text>
+<text class="og-s og-ink og-halo" x="299.0" y="343.0" text-anchor="middle">0.01%</text>
+<text class="og-s og-ink og-halo" x="349.0" y="493.0" text-anchor="middle">0.03%</text>
+<text class="og-s og-ink og-halo" x="349.0" y="443.0" text-anchor="middle">0.15%</text>
+<text class="og-s og-ink og-halo" x="349.0" y="393.0" text-anchor="middle">0.28%</text>
+<text class="og-s og-ink og-halo" x="349.0" y="343.0" text-anchor="middle">0.2%</text>
+<text class="og-s og-ink og-halo" x="349.0" y="293.0" text-anchor="middle">0.06%</text>
+<text class="og-s og-ink og-halo" x="349.0" y="243.0" text-anchor="middle">0.01%</text>
+<text class="og-s og-ink og-halo" x="399.0" y="543.0" text-anchor="middle">0.02%</text>
+<text class="og-s og-ink og-halo" x="399.0" y="493.0" text-anchor="middle">0.34%</text>
+<text class="og-s og-ink og-halo" x="399.0" y="443.0" text-anchor="middle">1.54%</text>
+<text class="og-b og-ink og-halo" x="399.0" y="393.0" text-anchor="middle">2.59%</text>
+<text class="og-s og-ink og-halo" x="399.0" y="343.0" text-anchor="middle">1.76%</text>
+<text class="og-s og-ink og-halo" x="399.0" y="293.0" text-anchor="middle">0.5%</text>
+<text class="og-s og-ink og-halo" x="399.0" y="243.0" text-anchor="middle">0.05%</text>
+<text class="og-s og-ink og-halo" x="449.0" y="543.0" text-anchor="middle">0.15%</text>
+<text class="og-s og-ink og-halo" x="449.0" y="493.0" text-anchor="middle">1.87%</text>
+<text class="og-b og-ink og-halo" x="449.0" y="443.0" text-anchor="middle">7.11%</text>
+<text class="og-b og-ink og-halo" x="449.0" y="393.0" text-anchor="middle">10.4%</text>
+<text class="og-b og-ink og-halo" x="449.0" y="343.0" text-anchor="middle">6.1%</text>
+<text class="og-s og-ink og-halo" x="449.0" y="293.0" text-anchor="middle">1.27%</text>
+<text class="og-s og-ink og-halo" x="449.0" y="243.0" text-anchor="middle">0.09%</text>
+<text class="og-s og-ink og-halo" x="499.0" y="543.0" text-anchor="middle">0.43%</text>
+<text class="og-b og-ink og-halo" x="499.0" y="493.0" text-anchor="middle">4.28%</text>
+<text class="og-b og-ink og-halo" x="499.0" y="443.0" text-anchor="middle">13.1%</text>
+<text class="og-b og-ink og-halo" x="499.0" y="393.0" text-anchor="middle">15.2%</text>
+<text class="og-b og-ink og-halo" x="499.0" y="343.0" text-anchor="middle">6.2%</text>
+<text class="og-s og-ink og-halo" x="499.0" y="293.0" text-anchor="middle">0.76%</text>
+<text class="og-s og-ink og-halo" x="499.0" y="243.0" text-anchor="middle">0.04%</text>
+<text class="og-s og-ink og-halo" x="549.0" y="543.0" text-anchor="middle">0.47%</text>
+<text class="og-b og-ink og-halo" x="549.0" y="493.0" text-anchor="middle">3.62%</text>
+<text class="og-b og-ink og-halo" x="549.0" y="443.0" text-anchor="middle">8.34%</text>
+<text class="og-b og-ink og-halo" x="549.0" y="393.0" text-anchor="middle">6.32%</text>
+<text class="og-s og-ink og-halo" x="549.0" y="343.0" text-anchor="middle">1.43%</text>
+<text class="og-s og-ink og-halo" x="549.0" y="293.0" text-anchor="middle">0.11%</text>
+<text class="og-s og-ink og-halo" x="599.0" y="543.0" text-anchor="middle">0.15%</text>
+<text class="og-s og-ink og-halo" x="599.0" y="493.0" text-anchor="middle">0.86%</text>
+<text class="og-s og-ink og-halo" x="599.0" y="443.0" text-anchor="middle">1.25%</text>
+<text class="og-s og-ink og-halo" x="599.0" y="393.0" text-anchor="middle">0.52%</text>
+<text class="og-s og-ink og-halo" x="599.0" y="343.0" text-anchor="middle">0.06%</text>
+<text class="og-b og-despair" x="121.7" y="543.0">wipe</text>
 </svg>
-
-<sub>Regenerate both with `relic solve --level 20 --amp-table --html`. They need a
-renderer that keeps inline HTML and SVG; the VS Code preview does, GitHub strips
-them.</sub>
-
-## Assumptions
-
-1. Level bonuses from 13 on follow the sheet: 13 +2% glory, 14 -2% despair, 15
-   start with 1 glory success, 16 the 9th slot, 17 +2% glory, 18 -2% despair,
-   19 start with 1 despair failure, 20 the 10th slot. Level 18 is read as -2%
-   despair. Spirit power stays at 10.
-2. The level-13 quest's "Abyss's Water Drop, Eye of Typhoon, Emperor Ring" are
-   the three relics no earlier level names: Mermaid's Tear, Eye of the Sky and
-   Crown of the Great Mountain.
-3. Amplification is +5% a glory success and -2% a despair success, floored at 0%;
-   an attempt that runs dry (a wipe) inherits nothing.
-4. The chance ladder is 80 / 65 / 50 / 35 / 20%, starting at 80%; a success
-   moves one step down (harder), a failure one step up. The head-start slots
-   move it the same way before the first action: the level-15 glory success
-   puts levels 15-18 at 65%, and the level-19 despair failure brings 19 and 20
-   back to 80%.
-
-## Running it
-
-```
-cargo install --path engine         # once: builds `relic` and puts it on your PATH
-relic solve --level 16              # exact solve, distribution, policy, safety trade-off
-relic solve --level 12 --target 7 2 # chase an all-or-nothing target (the level-13 quest)
-relic solve --level 20 --amp-table  # P(each glory/despair combination) at level 20
-relic solve --all-levels            # one line per level, 1-20
-relic heuristics --level 16         # the hand-played rule vs the optimum
-relic levels --strategy lookahead   # the whole climb, level by level
-relic levels --cost 20+43           # the mean diamonds to a goal under its saved plan
-```

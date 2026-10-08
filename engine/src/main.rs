@@ -4,8 +4,8 @@
 //!     relic solve --level 1               exact solve + report for one level
 //!     relic solve --level 20 --amp-table  P(each glory/despair combination)
 //!     relic heuristics                    hand-written rules vs the optimum
-//!     relic cost --markdown COST.md       regenerate COST.md
-//!     relic levels --markdown LEVELS.md   regenerate LEVELS.md
+//!     relic cost --markdown PATH          the crit relic farming report
+//!     relic levels --markdown COST.md     regenerate COST.md
 //!     relic levels --lookahead            search for the cheapest plan
 
 use std::fs;
@@ -119,7 +119,7 @@ struct Cost {
     /// emit the cost curve as an inline SVG instead of a table
     #[arg(long)]
     chart: bool,
-    /// write the whole COST.md document to PATH
+    /// write the crit relic farming report to PATH
     #[arg(long, value_name = "PATH")]
     markdown: Option<String>,
 }
@@ -145,14 +145,14 @@ struct Levels {
     /// emit the cost-by-level chart as inline SVG
     #[arg(long)]
     chart: bool,
-    /// write the whole LEVELS.md document to PATH
+    /// write the whole COST.md document to PATH
     #[arg(long, value_name = "PATH")]
     markdown: Option<String>,
     /// search for the cheapest plan to --max-level overall (starts from the
     /// saved plan for it)
     #[arg(long)]
     lookahead: bool,
-    /// search a look-ahead plan for every target (each level, then each crit
+    /// search a Look Ahead plan for every target (each level, then each crit
     /// relic tier) and write them to PATH
     #[arg(long, value_name = "PATH")]
     lookahead_all: Option<String>,
@@ -161,9 +161,13 @@ struct Levels {
     #[arg(long, num_args = 1..)]
     only: Vec<String>,
     /// the mean diamonds to each of these targets (e.g. 20+43) under its saved
-    /// look-ahead plan, over --runs runs (default 20000): a quick check
+    /// Look Ahead plan, over --runs runs (default 20000): a quick check
     #[arg(long, num_args = 1.., value_name = "TARGET")]
     cost: Vec<String>,
+    /// the naive climb to each of these targets (each level's own quest, the
+    /// rate-only hand rule in every attempt) against the Assisted Look Ahead plan
+    #[arg(long, num_args = 1.., value_name = "TARGET")]
+    naive: Vec<String>,
 }
 
 fn solve(a: Solve) -> Result<String, String> {
@@ -214,6 +218,22 @@ fn levels(a: Levels) -> Result<String, String> {
     if let Some(path) = &a.lookahead_all {
         return lookahead_all(game, path, &a.only);
     }
+    if !a.naive.is_empty() {
+        let runs = a.runs.unwrap_or(20000);
+        let mut out = String::new();
+        for code in &a.naive {
+            let target = levels::Target::parse(code)?;
+            let plan = levels::lookahead_plan(target)?;
+            let (naive_top, naive) = levels::naive_cost(game, runs, a.seed, target, relic::heuristics::NAIVE_FUEL);
+            let rows = levels::report::level_rows(game, &plan, runs, a.seed, &target.options())?;
+            let (top, best) = (rows[target.level - 1].mean, rows.last().expect("rows").mean);
+            out.push_str(&format!("{} ({} runs)\n", target.code(), commas(runs as f64, 0)));
+            out.push_str(&format!("  naive:               {:>10} to level {}, {:>10} in all\n", commas(naive_top, 0), target.level, commas(naive, 0)));
+            out.push_str(&format!("  Assisted Look Ahead: {:>10} to level {}, {:>10} in all\n", commas(top, 0), target.level, commas(best, 0)));
+            out.push_str(&format!("  Assisted Look Ahead saves {} ({:.1}%)\n", commas(naive - best, 0), 100.0 * (1.0 - best / naive)));
+        }
+        return Ok(out);
+    }
     if !a.cost.is_empty() {
         let runs = a.runs.unwrap_or(20000);
         let mut out = String::new();
@@ -251,7 +271,7 @@ fn levels(a: Levels) -> Result<String, String> {
 
 fn search(game: &Game, a: &Levels) -> Result<String, String> {
     let mut out = String::new();
-    println!("Look-ahead search: cheapest plan to level {} overall", a.max_level);
+    println!("Look Ahead search: cheapest plan to level {} overall", a.max_level);
     let target = levels::Target::level(a.max_level);
     let start = levels::lookahead_plan(target)?;
     let log = |line: &str| println!("  {line}");

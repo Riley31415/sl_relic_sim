@@ -225,6 +225,24 @@ fn the_forward_sweep_matches_direct_recursion() {
 }
 
 #[test]
+fn each_action_is_valued_as_the_choice_weighs_it() {
+    // the chosen action's value is the state's, and no other action scores
+    // higher - under objectives that tie often (a target, a mark) as well
+    for strategy in [Strategy::default(), Strategy::target(7, 1).then_close(9, 0, 3), Strategy::above(46, Some((8, 2)))] {
+        let mut solver = Solver::new(Config::for_level(19, strategy).unwrap());
+        for s in [solver.start_state(), st(5, 3, 4, 1, 6, 4, 2), st(8, 6, 6, 2, 2, 1, 3), st(8, 5, 9, 3, 3, 4, 3)] {
+            let v = solver.value(s);
+            let Choice::Act(chosen) = v.choice else { panic!("{s:?} is live") };
+            let mine = solver.action_value(s, chosen);
+            assert_eq!((mine.p_finish, mine.score, mine.then, mine.near, mine.last), (v.p_finish, v.score, v.then, v.near, v.last), "{s:?}");
+            for action in solver.legal_actions(s) {
+                assert!(solver.action_value(s, action).score <= v.score + 1e-12, "{action:?} in {s:?}");
+            }
+        }
+    }
+}
+
+#[test]
 fn amplification_is_summed_over_outcomes_not_over_averages() {
     // the zero floor makes amplification non-linear, so the expectation is
     // summed outcome by outcome; the linear shortcut under-states it
@@ -533,8 +551,14 @@ fn above_a_mark_is_nothing_below_it_and_everything_at_it() {
     assert_eq!(s.objective(10, 0), 1.0); // +50%: above it (more amplification breaks ties)
     // a mark under the memory is raised to beat it: "go higher"
     assert_eq!(Strategy::above(0, Some((8, 2))).objective, Objective::Above { mark: 37, least: 37 });
-    // no memory: any finished result counts
-    assert_eq!(Strategy::above(0, None).objective, Objective::Above { mark: 0, least: 0 });
+    // no mark over no memory (or one at +0%): no target - the most amplification, expected,
+    // not the chance of finishing that "+0% or more" would score
+    assert_eq!(Strategy::above(0, None), Strategy::default());
+    assert_eq!(Strategy::above(0, Some((0, 0))), Strategy::default());
+    let mut blank = Solver::new(Config::for_level(20, Strategy::above(0, None)).unwrap());
+    let mut most = Solver::new(Config::for_level(20, Strategy::default()).unwrap());
+    let start = blank.start_state();
+    assert_eq!(blank.value(start).score, most.value(start).score);
 }
 
 #[test]

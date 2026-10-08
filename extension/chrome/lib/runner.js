@@ -10,10 +10,10 @@
 // or a click that does not do what it should, stops the run with nothing
 // clicked.  Finding a better memory stops it too, once Replace applied it.
 
-import { classify, boardState, boardRate, isForbidden } from './vision.js';
+import { classify, boardState, boardRate, isForbidden, levelsFitting } from './vision.js';
+import { nothingToKeep, settledNote } from './advice.js';
 import {
-  TIER_PERCENT, amplification, chooseMemory, hitsObjective, inferOutcome, isStartState, moved, nextTier, show,
-  strategySettings,
+  TIER_PERCENT, amplification, chooseMemory, hitsObjective, inferOutcome, isStartState, levelList, moved, nextTier, pickLevel, show,
 } from './logic.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -113,12 +113,10 @@ export class Runner {
   settleTarget(st, tier) {
     const kind = this.objective?.kind;
     if (this.settled || (kind !== 'target' && kind !== 'close')) return;
-    if (this.solver.expected(st, tier) > 1e-9) return;
+    const note = settledNote(this.solver, { level: this.board.level, objective: this.objective, from: this.current ?? null, st, tier });
+    if (!note) return;
     this.settled = true;
-    const o = this.objective;
-    this.ui.log(kind === 'target'
-      ? `The target (${strategySettings(o)}) is out of reach this attempt - playing the rest of it ${o.then ? `until a limit (${strategySettings({ kind: 'close', ...o.then })})` : 'for more glory, less despair'}.`
-      : `Nothing more toward the limit (${strategySettings(o)}) can be gained this attempt - playing the rest of it for more glory, less despair.`);
+    this.ui.log(note);
   }
 
   /**
@@ -317,6 +315,33 @@ export class Runner {
       + `but the level is set to ${b.level}. Fix the level and press Start (it picks up mid-attempt).`);
   }
 
+  /**
+   * The inheritor level, off the board (the game does not show it there):
+   * the level set if the board fits it, else the level it fits, or the
+   * highest of several that play alike from here (18 and 19 do, part-way).
+   * Several that do not: asked for, or with `ask` false (a look, no run)
+   * the highest, said so.  An opening board tells the most - its head
+   * starts; part-way, levels 16-19 all show 9 slots.  A note, or null.
+   */
+  async fitLevel(screen, ask = true) {
+    this.levels ??= Array.from({ length: 20 }, (_, i) => this.solver.board(i + 1));
+    const fits = levelsFitting(screen, this.levels);
+    const pick = pickLevel(fits, this.levels, this.board?.level);
+    if (!pick) throw new Halt('This board fits no inheritor level I know - stopped.');
+    if (pick.level === this.board?.level) return null;
+    let { level } = pick;
+    if (!pick.alike && ask) {
+      this.ui.log(`This board fits inheritor level ${levelList(fits)} - which is it?`, 'ask');
+      level = this.ui.askLevel ? await this.ui.askLevel(fits) : null;
+      if (level == null || !this.running) throw new Halt(`The inheritor level is not known (the board fits ${levelList(fits)}) - set it, then press Start.`);
+    }
+    const note = `Inheritor level ${level}, read off the board${fits.length > 1 ? ` (it fits ${levelList(fits)}${pick.alike ? ', which play alike from here' : ask ? '' : ' - check it'})` : ''}.`;
+    this.ui.log(note);
+    this.useLevel(level, this.objective ?? this.settings.objective);
+    this.ui.levelSeen?.(level);
+    return note;
+  }
+
   /** Where the ladder stands: read off the buttons, else tracked, else asked. */
   async resolveTier(screen, st) {
     if (this.tier === null && isStartState(st, this.board)) this.tier = this.board.startTier;
@@ -344,7 +369,7 @@ export class Runner {
 
   async onBoard(frame) {
     const { screen } = frame;
-    if (!this.board) throw new Halt("An attempt is in progress but the inheritor level is not known yet - finish it, then start the advisor from the main page or Hero's Legacy.");
+    await this.fitLevel(screen);
     const st = this.state(screen);
     if (st.error) throw new Halt(st.error);
     this.checkOpening(st);
@@ -514,15 +539,8 @@ export class Runner {
   hopeless(st) {
     const current = this.current;
     if (!current) return null;
-    const left = { glory: this.board.slots - st.gf, despair: this.board.slots - st.df };
-    // the best corner first: most glory, least despair - usually the answer
-    for (let g = st.gs + left.glory; g >= st.gs; g--) {
-      for (let d = st.ds; d <= st.ds + left.despair; d++) {
-        if (this.choose(current, { glory: g, despair: d }) === 'replace') return null;
-      }
-    }
-    const best = { glory: st.gs + left.glory, despair: st.ds };
-    return `even the best result still possible (${fmtMemory(best)}) would not replace ${fmtMemory(current)}`;
+    const best = nothingToKeep(st, this.board, (fresh) => this.choose(current, fresh) === 'replace');
+    return best && `even the best result still possible (${fmtMemory(best)}) would not replace ${fmtMemory(current)}`;
   }
 
   /**
@@ -591,6 +609,12 @@ export class Runner {
         const note = m ? `${screen.kind}: ${fmtMemory({ glory: m.glory.success, despair: m.despair.success })}` : screen.kind;
         this.ui.show(frame, { note });
         return { note };
+      }
+      try {
+        await this.fitLevel(screen, false);
+      } catch (err) {
+        this.ui.show(frame, { note: err.message });
+        return { note: err.message };
       }
       const st = this.state(screen);
       if (st.error) {
