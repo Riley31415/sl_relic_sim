@@ -1155,10 +1155,12 @@ impl Game {
                     .map(|i| (i, stock[i] / self.economy.convert_from))
                     .filter(|&(_, lots)| lots > 0)
                     .collect();
-                if !lots.is_empty() {
-                    Next::Convert(lots)
-                } else if stock[CRIT] >= self.economy.per_attempt {
+                // farm while the crit relic has an attempt's worth: converting
+                // is free at a fixed rate, so it can wait until it runs short
+                if stock[CRIT] >= self.economy.per_attempt {
                     Next::Farm { key: TableKey::above(level as u8, mark, states[CRIT]) }
+                } else if !lots.is_empty() {
+                    Next::Convert(lots)
                 } else {
                     Next::Move(Move::Summon)
                 }

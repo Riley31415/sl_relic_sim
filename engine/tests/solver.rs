@@ -271,6 +271,33 @@ fn safety_first_minimises_the_wipe() {
 }
 
 #[test]
+fn an_attempt_that_can_only_wipe_is_known_early() {
+    // level 20, 7/0 glory and 2/8 despair filled, 3 spirit power, no mental
+    // strength: five slots left and three fills to give
+    let solver = Solver::new(level(20));
+    assert!(!solver.can_finish(st(7, 7, 8, 2, 0, 3, 0)));
+    // one mental strength more: a training that succeeds covers the rest
+    assert!(solver.can_finish(st(7, 7, 8, 2, 1, 3, 0)));
+    assert!(solver.can_finish(st(10, 9, 10, 2, 0, 0, 0))); // both bars full
+    assert!(!solver.can_finish(st(9, 9, 6, 2, 0, 0, 0))); // wiped
+
+    // whether some play still finishes is whether playing it safest ever does
+    let mut safe = Solver::new(Config { safety_first: true, ..level(1) });
+    let slots = safe.cfg.slots;
+    let (mental, spirit) = (safe.cfg.start_mental(), safe.cfg.max_spirit);
+    for gf in 0..=slots {
+        for df in 0..=slots {
+            for ms in 0..=mental {
+                for sp in 0..=spirit {
+                    let s = st(gf, 0, df, 0, ms, sp, 0);
+                    assert_eq!(safe.can_finish(s), safe.value(s).p_finish > 0.0, "{s:?}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn bars_are_filled_exactly_once() {
     let a = Solver::new(level(1)).analyse(None);
     let slots = f64::from(a.cfg.slots);

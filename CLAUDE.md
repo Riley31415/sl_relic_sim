@@ -64,13 +64,16 @@ goes in `advisor/`. The front ends hold only what is specific to them.
   are spent when it starts either way. Abandon only when the attempt is wiped
   or nothing still reachable would be kept; it is offered only when advised.
 - **Minimum Useful Amplification:** blank = 0, nothing more. Nothing fills
-  the box in.
+  the box in, with one exception: Single Relic's first Hero's Legacy (the
+  extension's Start, the site's first screenshot of it) moves any setting the
+  memory already meets just past it (`singleRelicSettings`). A result never
+  changes the settings.
   - Like any mark the memory already reaches, a 0 is raised to beat the memory
     in place (`Strategy::above`), since only a better result is kept.
   - With no memory, or one at +0%, a 0 mark is no mark at all: the engine plays
     for the most expected amplification (`Strategy::above(0, None)` is
     `Strategy::default()`). It is never scored as the chance of +0% or more,
-    which is only the chance of not wiping.
+    which is only 100% less the wipe chance.
   - A 0 mark is never "met": it doesn't stop a run.
 - **The inheritor level is read, not assumed.** The main page's levels view
   shows it. An attempt's board narrows it down (`levelsFitting`: slots, the

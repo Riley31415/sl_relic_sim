@@ -109,7 +109,9 @@ function moveDetail(a, m, best, d) {
  * either way - and why.
  */
 function abandonDetail(a) {
-  const why = a.abandon.wiped ? 'No move left.' : `Nothing still reachable would be kept (${esc(a.abandon.useless)}).`;
+  const why = a.abandon.wiped ? 'No move left.'
+    : a.abandon.doomed ? 'The bars can no longer all be filled: it can only wipe.'
+      : `Nothing still reachable would be kept (${esc(a.abandon.useless)}).`;
   return `<p class="verdict">${why} The memory stays ${a.from ? fmtMemory(a.from) : 'as it is'}; the pity still counts.</p>`;
 }
 

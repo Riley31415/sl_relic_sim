@@ -5,6 +5,7 @@ import { readFileSync } from 'fs';
 
 import { test } from '../../advisor/js/test/harness.mjs';
 import { RelicSolver } from '../dist/lib/solver.js';
+import { singleRelicSettings } from '../dist/lib/advice.js';
 import { chooseMemory } from '../dist/lib/logic.js';
 import { act, advise, applyMove, blank, opening } from '../dist/session.js';
 
@@ -211,6 +212,16 @@ test('an attempt nothing useful can come of is abandoned, and so is a wipe', () 
   a = advise(s, single({ kind: 'max', mark: 40 }), solver);
   assert.strictEqual(a.press, 'abandon');
   assert.match(a.detail, /Out of spirit power/);
+  // moves left, but five slots and three spirit power with no mental strength: it can only wipe
+  s = play(blank(), single({ kind: 'max', mark: 40 }), { type: 'set', level: 19 }, legacy(7, 1, 30), { type: 'press', button: 'inheritance' },
+    { type: 'set', st: { gf: 6, gs: 6, df: 7, ds: 2, ms: 0, sp: 3 } });
+  a = advise(s, single({ kind: 'max', mark: 40 }), solver);
+  assert.strictEqual(a.press, 'abandon');
+  assert.ok(a.abandon.doomed && !a.abandon.wiped);
+  assert.match(a.detail, /can only wipe/);
+  // one mental strength more and a training could still cover it: played on
+  s = play(s, single({ kind: 'max', mark: 40 }), { type: 'set', st: { gf: 6, gs: 6, df: 7, ds: 2, ms: 1, sp: 3 } });
+  assert.notStrictEqual(advise(s, single({ kind: 'max', mark: 40 }), solver).press, 'abandon');
 });
 
 test('screenshots mid-way: a board, the results, Hero\'s Legacy after', () => {
@@ -346,6 +357,29 @@ test('a state the game cannot be in is refused, or the level raised to fit it', 
   // fewer slots than the level has: the level stands (the slots were expanded since)
   s = play(blank(), settings, { type: 'set', level: 19 }, { type: 'read', reading: { kind: 'legacy', memory: { glory: 7, despair: 1 }, slots: 8, stock: 50 } });
   assert.deepStrictEqual([s.level, advise(s, settings, solver).check], [19, undefined]);
+});
+
+test('Single Relic: the settings a memory already meets move just past it, and only those', () => {
+  const DEFAULT = { mark: null, glory: 7, despair: 2, closeGlory: 9, closeDespair: 0 };
+  // 8/1 at level 18 (+38%): past the blank mark and the 7/2 target, short of the 9/0 limit
+  const set = singleRelicSettings(solver, 18, { glory: 8, despair: 1 }, DEFAULT);
+  assert.strictEqual(set.mark, 39);
+  // one glory or one despair better, whichever an attempt is likelier to reach
+  const chance = (t) => {
+    solver.configure(18, { kind: 'target', ...t }, { glory: 8, despair: 1 });
+    return solver.expected(opening(solver, 18).st, opening(solver, 18).tier);
+  };
+  const [up, down] = [chance({ glory: 9, despair: 1 }), chance({ glory: 8, despair: 0 })];
+  assert.deepStrictEqual([set.glory, set.despair], up >= down ? [9, 1] : [8, 0]);
+  assert.ok(!('closeGlory' in set) && !('closeDespair' in set));
+  assert.match(set.said, /already met them: set Minimum Useful Amplification 39%; Glory Target \d, Despair Target \d\./);
+  // a memory short of every setting changes none of them
+  assert.deepStrictEqual(singleRelicSettings(solver, 18, { glory: 3, despair: 4 }, { ...DEFAULT, mark: 20 }), { said: '' });
+  // nothing better than 9/0 on nine slots: the settings stay
+  assert.deepStrictEqual(singleRelicSettings(solver, 18, { glory: 9, despair: 0 }, { ...DEFAULT, mark: 45, closeDespair: 0 }), { said: '' });
+  // a limit met: every slot a glory, no despair (level 20: ten slots)
+  const top = singleRelicSettings(solver, 20, { glory: 8, despair: 1 }, { mark: 50, glory: 10, despair: 0, closeGlory: 8, closeDespair: 1 });
+  assert.deepStrictEqual({ ...top, said: undefined }, { closeGlory: 10, closeDespair: 0, said: undefined });
 });
 
 test('a blank Minimum Useful Amplification is a mark of 0, and nothing more', () => {

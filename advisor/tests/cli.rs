@@ -60,21 +60,24 @@ fn a_typed_board_needs_a_level() {
 }
 
 #[test]
-fn at_the_top_it_converts_then_farms() {
+fn at_the_top_it_farms_then_converts() {
+    // the crit relic has 10 on hand: it is attempted, whatever else could be traded in
     let (ok, out) = advisor(&[SHOT, "--level", "20"]);
     assert!(ok, "{out}");
-    assert!(out.contains(">> CONVERT"), "{out}");
-    // nothing left to trade: the crit relic itself is attempted
+    assert!(out.contains(">> ATTEMPT  Demon Eye of Weakness"), "{out}");
+    // short of 10: the other relics are traded in first
     let mut args = vec!["--level", "20", "--board"];
     let board: Vec<String> = BOARD
         .iter()
         .enumerate()
-        .map(|(i, cell)| format!("{}/{}", cell.rsplit_once('/').unwrap().0, if i == 1 { 30 } else { 0 }))
+        .map(|(i, cell)| if i == 1 { format!("{}/9", cell.rsplit_once('/').unwrap().0) } else { cell.to_string() })
         .collect();
     args.extend(board.iter().map(String::as_str));
     let (ok, out) = advisor(&args);
     assert!(ok, "{out}");
-    assert!(out.contains(">> ATTEMPT  Demon Eye of Weakness"), "{out}");
+    assert!(out.contains(">> CONVERT"), "{out}");
+    let (ok, out) = advisor(&[SHOT, "--level", "20"]);
+    assert!(ok, "{out}");
     assert!(out.contains("the best chance of 43% or more, then the most amplification"), "{out}");
     assert!(out.contains("[autoplayer: Maximize amplification above a target - Minimum Useful Amplification 43%]"), "{out}");
 }

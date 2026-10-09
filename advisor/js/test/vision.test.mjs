@@ -290,6 +290,36 @@ test('the main page, counts view: every relic, checked against the totals', () =
   assert.ok(screen.ok);
 });
 
+test('the main page at level 20: the level reads, the MAX pity bar is no Level Up button', () => {
+  const screen = classify(shot('main-levels-20'));
+  assert.strictEqual(screen.kind, 'main');
+  assert.strictEqual(screen.view, 'levels');
+  assert.strictEqual(screen.level, 20);
+  assert.strictEqual(screen.levelUp, false);
+});
+
+test("the main page at level 20, counts view: the Demon Eye's stock reads", () => {
+  const screen = classify(shot('main-counts-20'));
+  assert.strictEqual(screen.view, 'counts');
+  assert.ok(screen.ok);
+  assert.deepStrictEqual(screen.totals, { glory: 96, despair: 16 });
+  assert.strictEqual(screen.relics[1].stock, 360);
+});
+
+test('the counts view: a total with its digits run together ("x102"), a glory count of 10, every badge', () => {
+  const screen = classify(shot('main-counts-102'));
+  assert.strictEqual(screen.view, 'counts');
+  assert.ok(screen.ok);
+  assert.deepStrictEqual(screen.totals, { glory: 102, despair: 20 });
+  assert.deepStrictEqual(screen.relics.map((r) => [r.glory, r.despair]),
+    [[9, 3], [10, 2], [9, 1], [8, 2], [9, 2], [7, 1], [9, 1], [8, 1], [7, 1], [9, 1], [8, 2], [9, 3]]);
+  assert.deepStrictEqual(screen.relics.map((r) => r.stock), [139, 220, 86, 29, 3, 55, 42, 44, 0, 0, 0, 0]);
+});
+
+test('Relic Conversion is never taken for a screen to act on', () => {
+  for (const name of ['conversion-pick', 'conversion-craft']) assert.strictEqual(classify(shot(name)).kind, 'unknown', name);
+});
+
 test('the Level Up button: seen on both views once a level-up is earned, never otherwise', () => {
   for (const name of ['main-levels', 'main-counts']) assert.strictEqual(classify(shot(name)).levelUp, false, name);
   const levels = classify(shot('main-levelup-levels'));
@@ -325,6 +355,9 @@ test('Hero\'s Legacy: every stock read, digits run together or not', () => {
     ['legacy-seal', 156, [8, 2]], ['legacy-mermaid', 180, [9, 1]], ['legacy-sky', 4, [7, 2]],
     ['legacy-giant-167', 167, [7, 1]], ['legacy-seal-116', 116, [8, 2]],
     ['legacy-seal-86-sd', 86, [8, 2]],
+    ['legacy-ring-33', 33, [8, 1]], // "Inheritance Slots Expanded!" over the button
+    ['legacy-eye-310', 310, [8, 2]], // level 20: ten slots
+    ['legacy-eye-240', 240, [9, 2]],
   ]) {
     const screen = classify(shot(name));
     assert.strictEqual(screen.kind, 'legacy', name);

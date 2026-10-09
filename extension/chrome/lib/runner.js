@@ -11,7 +11,7 @@
 // clicked.  Finding a better memory stops it too, once Replace applied it.
 
 import { classify, boardState, boardRate, isForbidden, levelsFitting } from './vision.js';
-import { nothingToKeep, settledNote } from './advice.js';
+import { legalMoves, nothingToKeep, settledNote, singleRelicSettings } from './advice.js';
 import {
   TIER_PERCENT, amplification, chooseMemory, hitsObjective, inferOutcome, isStartState, levelList, moved, nextTier, pickLevel, show,
 } from './logic.js';
@@ -72,6 +72,7 @@ export class Runner {
     this.settled = false; // said this attempt's target is settled
     this.aimMark = null; // what a mark's play aims at, once the mark is out of reach
     this.current = null; // the applied memory, from Hero's Legacy
+    this.preset = false; // the settings checked against the first Hero's Legacy of the run
     this.result = null; // the attempt just completed
     this.finished = 0;
     this.lastClick = 0;
@@ -376,7 +377,7 @@ export class Runner {
     const tier = await this.resolveTier(screen, st);
 
     this.aim();
-    const useless = this.hopeless(st);
+    const useless = this.hopeless(st, tier);
     if (useless) return this.abandonAttempt(frame, st, useless);
     this.settleTarget(st, tier);
     this.followMark(st);
@@ -531,12 +532,19 @@ export class Runner {
 
   /**
    * Whether no result this attempt can still reach would be kept: then why
-   * play it out?  Every roll succeeds with a chance strictly between 0 and
-   * 1, so every count of successes in the slots left is reachable; each is
-   * put to the Keep/Replace rule against the applied memory.  A reason to
-   * give, or null - also when that memory is not known.
+   * play it out?  If the spirit power and mental strength left cannot fill
+   * the bars, it can only wipe, whatever the memory.  Otherwise every roll
+   * succeeds with a chance strictly between 0 and 1, so every count of
+   * successes in the slots left is reachable; each is put to the
+   * Keep/Replace rule against the applied memory.  A reason to give, or null
+   * - also when that memory is not known.  A board already wiped (no move
+   * left) is not this: the solver's 'deadend' abandons that.
    */
-  hopeless(st) {
+  hopeless(st, tier) {
+    if (legalMoves(st, this.board).length && !this.solver.canFinish(st, tier)) {
+      const left = 2 * this.board.slots - st.gf - st.df;
+      return `the ${left} slots left cannot all be filled with ${st.sp} spirit power and ${st.ms} mental strength, so it can only wipe`;
+    }
     const current = this.current;
     if (!current) return null;
     const best = nothingToKeep(st, this.board, (fresh) => this.choose(current, fresh) === 'replace');
@@ -582,6 +590,7 @@ export class Runner {
     const m = frame.screen.memory;
     this.current = { glory: m.glory.success, despair: m.despair.success };
     this.ui.show(frame, { note: `current memory: ${fmtMemory(this.current)}` });
+    if (!this.preset) this.presetFrom(this.current);
     if (this.finished >= this.attempts) {
       throw new Halt(`Done: ${this.finished} attempt(s), current memory ${fmtMemory(this.current)}.`);
     }
@@ -594,6 +603,28 @@ export class Runner {
       (f) => f.screen.kind === 'board', 'the attempt to start (out of relics?)');
     this.tier = null;
     return next;
+  }
+
+  /**
+   * The run's first Hero's Legacy: any setting the memory there already
+   * meets is moved just past it (singleRelicSettings), in the panel too, and
+   * the attempts are played for that.  Settings it does not meet are left
+   * as they are, and nothing changes again for a result.
+   */
+  presetFrom(memory) {
+    this.preset = true;
+    const now = this.settings.strategies;
+    if (!now || !this.board || !this.objective) return;
+    const { said, ...set } = singleRelicSettings(this.solver, this.board.level, memory, now);
+    if (said) {
+      const all = { ...now, ...set };
+      const o = this.objective;
+      this.objective = o.kind === 'target' ? { ...o, glory: all.glory, despair: all.despair }
+        : o.kind === 'close' ? { ...o, glory: all.closeGlory, despair: all.closeDespair } : { ...o, mark: all.mark };
+      this.ui.presetSettings?.(set);
+      this.ui.log(said);
+    }
+    this.aim(); // weighing the targets solved for others
   }
 
   /** One look, no clicks: the screen and, on a board, the move it would make. */

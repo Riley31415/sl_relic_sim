@@ -55,7 +55,10 @@ export class GameTab {
     const data = await this.screenshot();
     const metrics = await this.send('Page.getLayoutMetrics');
     const bytes = Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
-    const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+    // the pixels as captured: a capture can carry the display's colour
+    // profile, and converting through it shifts the game's colours off the
+    // ones the screen reader was tuned on (a stock's digits stop reading)
+    const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }), { colorSpaceConversion: 'none' });
     const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     ctx.drawImage(bitmap, 0, 0);

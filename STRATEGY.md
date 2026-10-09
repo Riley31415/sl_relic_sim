@@ -1,54 +1,4 @@
-# Relic inheritance - strategy
-
-How to climb the inheritor from level 1 to any goal - a level from 2 to 20, or
-level 20 plus a Demon Eye of Weakness farmed to 43, 46, 48 or 50% - and how to
-play a single inheritance attempt on the way. What every level costs in
-diamonds, goal by goal, is in [COST.md](COST.md).
-
-Every number about a single attempt is exact: the solver enumerates every
-branch of an attempt and weights it by its probability, rather than sampling.
-The climb's costs are simulated (20,000 runs).
-
-## Every goal
-
-A level is reached with attempts made on the level before it: level 13 with
-attempts on the level-12 board, and so on. Each goal has its own plan - the
-cheapest route to it, found by the Look Ahead search - so what a level costs
-depends on what lies beyond it. The requirement is what the board must show
-to level up; pity levels up without it.
-
-Every goal's cost is in [COST.md](COST.md): from 47K for level 2 to 1.50M for
-level 20, and 1.55M to 5.25M with the Demon Eye farmed to a tier.
-
-How the plans differ by goal:
-
-- **The goal's own level spends everything.** Nearly every goal's plan rolls
-  spare relics for the pity at its last step: whatever is left after the goal
-  is worth nothing to it, so it goes into the pity bar.
-- **A named-relic goal is usually reached by pity.** Three named relics at a
-  bar - 5+ / 2-, 6+ / 2-, 7+ / 2- - is a long shot on the board it is rolled
-  on, so goals 5, 9 and 13 finish by pity 85-89% of the time, and goals 2, 3
-  and 7 about 60%.
-- **A later goal buys more early.** On the way to a far goal, the plan
-  summons where a near goal would roll spare relics for pity, and banks the
-  relics the next named level needs: reaching level 5 costs 142K when 5 is
-  the goal, but 358K on the way to 20 + 43%. The stock bought early is spent
-  on the later levels, which is why they come cheap.
-- **The Demon Eye tiers climb nearly alike.** 20 + 43% and 20 + 46% differ
-  only in a few early fillers and where some levels aim; 48% and 50% also
-  build levels 4, 8 and 14 to a bar instead of working on the worst relics.
-  Past 46% each point gets much dearer: 50% - a full glory bar and no
-  despair - costs 3.30M more than 48%.
-
-## The climb to 20 + 43%
-
-**We recommend level 20 + 43%: it is the best place to stop for the damage
-your diamonds buy.** The step from level 20 to a 43% Demon Eye adds about 2.7% damage for
-50K diamonds - as good a return as the last level-ups (level 20 itself adds
-10% for 157K) - while every tier past it returns far less: 46% adds 1.4% for
-another 120K, and 50% under 0.1% per 100K. This is the route there, level by
-level; the route to 20 + 46% is nearly the same as far as level 20. The strategy
-names are the extension's.
+## Strategy By Level
 
 - **Level 2** (Giant Hand: 3+ / any): **maximize glory, minimize despair above a target**: the best chance of 3+ glory.
 - **Level 3** (Demon Eye, Immortal Oath: 3+ / 2-): above a target: the best chance of 3+ / 2- on each.
@@ -70,6 +20,26 @@ names are the extension's.
 - **Level 19** (94+ / 19-): work on the worst relic, toward level 20's totals (96+ / 16-).
 - **Level 20** (96+ / 16-): work on the worst relic.
 - **20 + 43%** (Demon Eye at 43%): **maximize amplification above a target**, 43% as the Minimum Useful Amplification.
+
+**"Work on the worst relic"** is how you'd fix the board by hand:
+
+1. Add up the board's glory and despair and compare them with the
+   requirement.
+2. **Too much despair?** Find the relic with the most despair (and, of
+   those, the least glory) and attempt it, going for a result with less
+   despair and at least as much glory.
+3. **Despair fits but glory is short?** Find the relic with the least glory
+   (and, of those, the most despair) and attempt it, going for more glory
+   without adding despair.
+4. **Keep the new result only if it moves the board closer to the
+   requirement** - less despair or more glory overall - or, just as close,
+   leaves the relic with more glory and less despair.
+5. Not 10 of that relic on hand? Take the next worst one.
+
+"Toward level 19's totals" means you judge the board by level 19's
+requirement instead of this level's, so you start fixing what level 19 will
+ask for early; the level still ends as soon as its own requirement is met.
+The strategy names are the extension's.
 
 The whole route costs 1.55M diamonds on average: 1.52M to level 20, then
 36K to bring the Demon Eye to 43%. Farming to 46% instead costs 151K
@@ -161,22 +131,14 @@ fails four times in five.
 
 ## Level 20 and past it: convert everything and farm the Demon Eye
 
-Level 20 is reached with level-19 attempts, so its 10th slot only matters once
-you are there. By then the climb is over, and every relic left is worth more
-as amplification on the crit relic, the Demon Eye of Weakness:
+Once you reach level 20, put everything into the Demon Eye of Weakness:
 
-- **Convert everything.** Trade every relic of every other type into Demon
-  Eyes, 10 of one type for 7, the moment level 20 is reached, and keep
-  converting as soon as a type reaches 10 again.
-- **Attempt only the Demon Eye.** Summon when it runs short; nothing else is
-  rolled any more.
-- **Play every attempt to maximize amplification above a target**, the tier
-  you are farming for as the Minimum Useful Amplification: the best chance of
-  reaching it, then the most amplification. If the tier slips out of reach
-  part-way through an attempt, play on for the highest amplification still
-  possible. With level 20 itself as the goal there is no minimum: the
-  leftovers are spent for the most amplification above what the Demon Eye
-  already has.
+- **Convert every other relic** into Demon Eyes (10 of a type for 7), and
+  keep converting as more come in.
+- **Attempt only the Demon Eye**, summoning when it runs out.
+- **Play each attempt for your tier**: maximize amplification above a target,
+  with the tier as the Minimum Useful Amplification. If the tier slips out of
+  reach mid-attempt, go for the highest amplification still possible.
 - **Keep a result only if it raises the Demon Eye's amplification.**
 
 The level-20 board itself plays much like level 19's:

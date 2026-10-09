@@ -518,6 +518,27 @@ impl Solver {
         s.gf == self.cfg.slots && s.df == self.cfg.slots
     }
 
+    /// Whether some way of playing on can still fill both bars.  Every roll
+    /// can go either way, so this is whether the spirit power and mental
+    /// strength left still cover the slots left: if not, the attempt ends in
+    /// a wipe however it is played.
+    pub fn can_finish(&self, s: State) -> bool {
+        fn search(solver: &Solver, s: State, seen: &mut FxHashMap<u64, bool>) -> bool {
+            if solver.is_terminal(s) {
+                return true;
+            }
+            if let Some(&known) = seen.get(&s.key()) {
+                return known;
+            }
+            let can = solver.legal_actions(s).into_iter().any(|action| {
+                solver.transitions(s, action).into_iter().any(|(p, next, _)| p > 0.0 && search(solver, next, seen))
+            });
+            seen.insert(s.key(), can);
+            can
+        }
+        search(self, s, &mut FxHashMap::default())
+    }
+
     /// (probability, next state, roll succeeded) for both ways a roll can go.
     pub fn transitions(&self, s: State, action: Action) -> [(f64, State, bool); 2] {
         let p = self.chance(action, s.tier);

@@ -35,6 +35,53 @@ export function opening(solver, level) {
   return { st: { gf: b.startGlory, gs: b.startGlory, df: b.startDespairFail, ds: 0, ms: b.slots, sp: b.maxSpirit }, tier: b.startTier };
 }
 
+/**
+ * Single Relic's settings for a relic whose Hero's Legacy shows `memory`, at
+ * inheritor `level`: only the ones the memory already meets, each moved just
+ * past it, since only a better memory is kept.  `now` holds all three
+ * strategies' settings ({ mark (null: blank, 0), glory, despair, closeGlory,
+ * closeDespair }); what comes back is the ones to change, with a line saying
+ * why (empty: nothing changes).
+ *  - Minimum Useful Amplification: the memory's amplification + 1%, while
+ *    the board has room above it (5% a slot).
+ *  - Glory Target / Despair Target: one glory or one despair better than the
+ *    memory, whichever an attempt at this level is likelier to reach (a
+ *    glory on a tie: it is worth more).
+ *  - Max useful Glory / Min useful Despair: every slot a glory, no despair.
+ */
+export function singleRelicSettings(solver, level, memory, now) {
+  const board = solver.board(level);
+  const { glory: g, despair: d } = memory;
+  const amp = amplification(memory);
+  const out = {};
+  const why = [];
+  if ((now.mark ?? 0) <= amp && amp < 5 * board.slots) {
+    out.mark = amp + 1;
+    why.push(`Minimum Useful Amplification ${amp + 1}%`);
+  }
+  if (hitsObjective({ kind: 'target', glory: now.glory, despair: now.despair }, memory)) {
+    const ways = [];
+    if (g < board.slots) ways.push({ glory: Math.max(g + 1, board.startGlory), despair: Math.min(d, board.slots - board.startDespairFail) });
+    if (d > 0) ways.push({ glory: Math.max(g, board.startGlory), despair: Math.min(d - 1, board.slots - board.startDespairFail) });
+    if (ways.length) {
+      const { st, tier } = opening(solver, level);
+      const chance = (t) => {
+        solver.configure(level, { kind: 'target', ...t }, memory);
+        return solver.expected(st, tier);
+      };
+      const best = ways.length === 1 || chance(ways[0]) >= chance(ways[1]) ? ways[0] : ways[1];
+      Object.assign(out, best);
+      why.push(`Glory Target ${best.glory}, Despair Target ${best.despair}`);
+    }
+  }
+  if (hitsObjective({ kind: 'close', glory: now.closeGlory, despair: now.closeDespair }, memory) && (g < board.slots || d > 0)) {
+    Object.assign(out, { closeGlory: board.slots, closeDespair: 0 });
+    why.push(`Max useful Glory ${board.slots}, Min useful Despair 0`);
+  }
+  out.said = why.length ? `The current memory (${g} glory, ${d} despair, +${amp}%) already met them: set ${why.join('; ')}.` : '';
+  return out;
+}
+
 /** The moves a board allows: an Attempt with spirit power and a slot left, training with mental strength. */
 export function legalMoves(st, board) {
   return MOVES.filter((m) => (m === 'train' ? st.ms > 0 : st.sp > 0 && st[m === 'glory' ? 'gf' : 'df'] < board.slots));
@@ -71,10 +118,10 @@ export function keepRule(att, solver) {
 }
 
 /**
- * Whether no result the attempt can still end on would be kept (every count
- * of successes in the slots left can still happen; `keeps` as keepRule): the
- * best result still possible, to say so, or null - also when it cannot be
- * told.
+ * Whether no result the attempt can still end on would be kept (while the
+ * bars can still be filled, every count of successes in the slots left can
+ * still happen; `keeps` as keepRule): the best result still possible, to say
+ * so, or null - also when it cannot be told.
  */
 export function nothingToKeep(st, board, keeps) {
   for (let g = st.gs + board.slots - st.gf; g >= st.gs; g--) {
@@ -164,9 +211,11 @@ export function moveOption(solver, att, board, action, keeps) {
 /**
  * The options on a board in play: every move it allows (moveOption) and
  * Abandon Inheritance, and the one advised - the solver's move, or Abandon
- * when the attempt is wiped (no move left) or no result it can still end on
- * would be kept (`useless`: the best of those).  Each move not advised says
- * what put it behind (`decider`, a criteria key).  Bars not yet full.
+ * when the attempt is wiped (no move left), doomed (moves left, but the
+ * spirit power and mental strength cannot fill the bars: it can only wipe)
+ * or no result it can still end on would be kept (`useless`: the best of
+ * those).  Each move not advised says what put it behind (`decider`, a
+ * criteria key).  Bars not yet full.
  */
 export function boardOptions(solver, att) {
   const board = solver.board(att.level);
@@ -175,14 +224,15 @@ export function boardOptions(solver, att) {
   const crit = criteria(att, solver);
   const moves = legalMoves(att.st, board).map((action) => moveOption(solver, att, board, action, keeps));
   const wiped = !moves.length;
-  const useless = wiped ? null : nothingToKeep(att.st, board, keeps);
+  const doomed = !wiped && !solver.canFinish(att.st, att.tier);
+  const useless = wiped || doomed ? null : nothingToKeep(att.st, board, keeps);
   let best = 'abandon';
-  if (!wiped && !useless) {
+  if (!wiped && !doomed && !useless) {
     best = solver.best(att.st, att.tier);
     const top = moves.find((m) => m.action === best);
     for (const m of moves) m.decider = m === top ? null : decider(crit, top.value, m.value);
   }
-  return { moves, criteria: crit, best, abandon: { wiped, useless } };
+  return { moves, criteria: crit, best, abandon: { wiped, doomed, useless } };
 }
 
 /**

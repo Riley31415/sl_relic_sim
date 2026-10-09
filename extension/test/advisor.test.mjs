@@ -135,10 +135,12 @@ function setup(game, { attempts = 20, advice = plan(), saved = null, level = 18,
     best: (st) => (st.gf === 9 && st.df === 9 ? 'done' : 'despair'),
     expected: () => 0,
     finishChance: () => 1,
+    canFinish: () => true,
     advise: (...a) => advice.advise(...a),
     keepsRoll: (...a) => advice.keepsRoll(...a),
     pityGain: () => 180,
     pityNeeded: () => 9000,
+    maxLevel: () => 20,
   };
   const runner = new Advisor({
     tab: { capture: async () => ({ img: null, ratio: 1, png: '' }), click: async (x, y) => game.click(x, y) },
@@ -148,6 +150,7 @@ function setup(game, { attempts = 20, advice = plan(), saved = null, level = 18,
       log: (text, lv) => logs.push({ text, level: lv }), show() {}, askTier: async () => null,
       useSettings: (s) => used.push(s),
       saveAttempt: async (record) => (store.attempt = record), loadAttempt: async () => store.attempt,
+      raiseGoal: (amp) => ((store.raised = amp), 'Level 20 + Demon Eye 46% amp'),
     },
     timing: { poll: 0, settle: 0, gap: [0, 0], retry: 30 },
     see: (img, lastAnchor, anywhere, popup) => {
@@ -162,7 +165,9 @@ function setup(game, { attempts = 20, advice = plan(), saved = null, level = 18,
 
 test('advisor: reads the main page, every stock, then works the relic the plan picks', async () => {
   const game = new Game({ board: BOARD, stock: STOCK, pity: 4680 });
-  const { runner, text, configured, last } = setup(game, { attempts: 2 });
+  // the Crown, if it has 10 on hand: its stock matters until it is read, so every relic is visited
+  const advice = plan({ relic: (states, stock) => (stock[11] >= 10 ? 11 : null) });
+  const { runner, text, configured, last } = setup(game, { attempts: 2, advice });
   await runner.run();
   assert.match(text(), /Main page: inheritor level 18, pity 52%/);
   // every relic visited for its stock, in order, then Mountain Crown worked
@@ -253,6 +258,27 @@ test('advisor: a full pity bar stops it', async () => {
   assert.strictEqual(game.clicks.length, 0);
 });
 
+test('advisor: the Final Goal reached moves on to the next tier above the Demon Eye, and stops', async () => {
+  // level 20, the Demon Eye (relic 1) at 9/1: 43%, the 20 + 43% goal met
+  const board = BOARD.map((x, i) => (i === 1 ? [9, 1] : x));
+  const game = new Game({ board, stock: STOCK, level: 20, pity: 9000 });
+  const done = { calls: [], advise: () => ({ step: 'done', goal: 20 }), keepsRoll: () => false };
+  const { runner, last, store } = setup(game, { advice: done, goal: { level: 20, tier: 43 }, level: 20 });
+  await runner.run();
+  assert.strictEqual(store.raised, 43);
+  assert.match(last().text, /The goal is reached \(20 \+ Demon Eye at 43%\)\. The Demon Eye is at 43% - the Final Goal is now Level 20 \+ Demon Eye 46% amp/);
+});
+
+test('advisor: at the top level the MAX pity bar is not a level-up - it goes on to the counts', async () => {
+  // level 20 shows the bar full, reading MAX: nothing above to level up to
+  const game = new Game({ board: BOARD, stock: STOCK, level: 20, pity: 9000 });
+  const { runner, text } = setup(game, { attempts: 1 });
+  await runner.run();
+  assert.match(text(), /Main page: inheritor level 20, the top - farming the Demon Eye/);
+  assert.doesNotMatch(text(), /The pity bar is full/);
+  assert.ok(game.clicks.length > 0);
+});
+
 test('advisor: pity nearly full - goes back to read the bar, and stops when it fills', async () => {
   const game = new Game({ board: BOARD, stock: STOCK, pity: 8640, roll: () => ({ glory: 7, despair: 3 }) }); // 96%
   const { runner, text, last } = setup(game);
@@ -321,13 +347,26 @@ test('advisor: stock off the badges - no start-up visits', async () => {
   assert.strictEqual(game.attempts, 1);
 });
 
-test('advisor: an unreadable badge - only that relic is visited', async () => {
+test('advisor: an unreadable badge the advice turns on - only that relic is visited', async () => {
   const game = new Game({ board: BOARD, stock: STOCK, badges: (i, n) => (i === 4 ? null : n) });
-  const { runner, text } = setup(game, { attempts: 1 });
+  // the Ring of Lightning is rolled if it has 10 on hand, else the Crown
+  const advice = plan({ relic: (states, stock) => (stock[4] >= 10 ? 4 : 11) });
+  const { runner, text } = setup(game, { attempts: 1, advice });
   await runner.run();
   assert.match(text(), /1 stock not read off the badges - reading it off Hero's Legacy/);
   assert.match(text(), /Ring of Lightning: 8 glory, 2 despair, 109 on hand/);
   assert.strictEqual(text().match(/^ {2}.*on hand\.$/gm).length, 1);
+});
+
+test('advisor: an unreadable badge the advice does not turn on is not visited', async () => {
+  // the plan rolls the Crown (27 on hand, read) whatever the Ring of Lightning has
+  const game = new Game({ board: BOARD, stock: STOCK, badges: (i, n) => (i === 4 ? null : n) });
+  const { runner, text } = setup(game, { attempts: 1 });
+  await runner.run();
+  assert.match(text(), /1 stock not read off the badges - the advice is the same whatever it is\./);
+  assert.doesNotMatch(text(), /^ {2}.*on hand\.$/m); // no visit lines
+  assert.match(text(), /Advisor: Crown of the Great Mountain \(27 on hand\)/);
+  assert.strictEqual(game.attempts, 1);
 });
 
 test("advisor: a badge that disagrees with Hero's Legacy - every stock is re-read", async () => {

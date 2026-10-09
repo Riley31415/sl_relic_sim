@@ -155,6 +155,11 @@ export class RelicSolver {
     return out;
   }
 
+  /** The top inheritor level: no pity bar there (it shows MAX), nothing above it. */
+  maxLevel() {
+    return this.x.max_level();
+  }
+
   /** Pity points that level up to `goal`, and one attempt's at `level`. */
   pityNeeded(goal) {
     return this.x.pity_needed(goal);
@@ -187,6 +192,16 @@ export class RelicSolver {
   /** Chance of finishing without a wipe, from here. */
   finishChance(st, tier) {
     return this.x.finish_chance(...this.args(st, tier));
+  }
+
+  /**
+   * Whether any play from here can still fill both bars (false: the spirit
+   * power and mental strength left fall short, and it can only wipe).
+   */
+  canFinish(st, tier) {
+    const code = this.x.can_finish(...this.args(st, tier));
+    if (code < 0) throw new Error(`the board cannot be in state ${JSON.stringify(st)} at tier ${tier}`);
+    return code === 1;
   }
 
   /**

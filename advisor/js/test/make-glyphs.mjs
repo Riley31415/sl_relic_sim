@@ -32,12 +32,20 @@ const LEVELUP_COUNTS = {
   badges: ['137', '115', '125', '92', '109', '28', '136', '5', '36', '160', '4', '7'],
   totals: ['92', '19'],
 };
+// level 20: a glory count of 10, "x102" with its 1 and 0 joined, an 86 badge
+const COUNTS_102 = {
+  counts: [['9', '3'], ['10', '2'], ['9', '1'], ['8', '2'], ['9', '2'], ['7', '1'], ['9', '1'], ['8', '1'], ['7', '1'], ['9', '1'], ['8', '2'], ['9', '3']],
+  badges: ['139', '220', '86', '29', '3', '55', '42', '44', '0', '0', '0', '0'],
+  totals: ['102', '20'],
+};
 const HERO = ['giant', 'demon', 'oath', 'tree', 'ring', 'star', 'seal', 'veil', 'spark', 'mermaid', 'sky', 'crown'];
 const SOURCES = [
   ['main-counts', [535, 0, 465, 847], 0.917, 'main', MAIN_COUNTS],
   ['main-levels', [535, 0, 465, 847], 0.917, 'level', '18'],
   ['main-levelup-counts', [535, 0, 465, 847], 0.917, 'main', LEVELUP_COUNTS],
   ['main-levelup-levels', [535, 0, 465, 847], 0.917, 'level', '18'],
+  ['main-levels-20', [488, 0, 465, 847], 0.917, 'level', '20'], // the top: the pity bar shows MAX
+  ['main-counts-102', [488, 0, 465, 847], 0.917, 'main', COUNTS_102],
   ['compare', null, 1, 'cards', { current: [7, 1, 33, 931], fresh: [6, 4, 22, 854] }],
   ['compare-full', [535, 0, 465, 847], 0.92, 'cards', { current: [8, 3, 34, 402], fresh: [8, 4, 32, 396] }],
   ['legacy-crown', [535, 0, 465, 847], 0.917, 'stock', '127'],
@@ -52,6 +60,9 @@ const SOURCES = [
   ['legacy-giant-167', [535, 0, 465, 847], 0.917, 'stock', '167'],
   ['legacy-seal-116', [488, 0, 465, 847], 0.917, 'stock', '116'], // the 6 run into the slash
   ['legacy-seal-86-sd', [488, 0, 465, 847], 0.917, 'stock', '86'], // the stream in SD: blurrier
+  ['legacy-ring-33', [488, 0, 465, 847], 0.917, 'stock', '33'],
+  ['legacy-eye-310', [488, 0, 465, 847], 0.917, 'stock', '310'], // the digits joined along the bottom row
+  ['legacy-eye-240', [488, 0, 465, 847], 0.917, 'stock', '240'], // a 2 unlike the others
   // every relic's Hero's Legacy (hero-NN-*.png, NN the relic's place on the main page)
   ...['207', '115', '135', '92', '109', '28', '156', '105', '36', '180', '4', '27'].map((stock, i) =>
     [`hero-${String(i).padStart(2, '0')}-${HERO[i]}`, [535, 0, 465, 847], 0.917, 'stock', stock]),

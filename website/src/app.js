@@ -3,6 +3,7 @@
 // corrections, settings and a record of what happened.  Everything shown
 // comes from the session (session.js) and is drawn again after every input.
 
+import { singleRelicSettings } from './lib/advice.js';
 import { levelList } from './lib/logic.js';
 import { RelicSolver } from './lib/solver.js';
 import { MOVES, act, advise, blank } from './session.js';
@@ -179,6 +180,7 @@ function clearData() {
   lastKey = null;
   future = [];
   session = blank();
+  legacyChecked = false;
   note(['Cleared the data.']);
   shotStatus('');
   problem = null;
@@ -447,13 +449,33 @@ function renderLog() {
 
 /** An image file's pixels. */
 async function pixels(file) {
-  const bitmap = await createImageBitmap(file);
+  // the pixels as saved, not converted through a colour profile the image
+  // carries: that shifts the game's colours off the ones the reader knows
+  const bitmap = await createImageBitmap(file, { colorSpaceConversion: 'none' });
   const canvas = document.createElement('canvas');
   canvas.width = bitmap.width;
   canvas.height = bitmap.height;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   ctx.drawImage(bitmap, 0, 0);
   return { canvas, img: ctx.getImageData(0, 0, bitmap.width, bitmap.height) };
+}
+
+/**
+ * Single Relic: the first Hero's Legacy screenshot since the page opened (or
+ * the data was cleared) moves any setting its memory already meets just past
+ * it (singleRelicSettings).  Later ones, and results, leave them be.
+ */
+let legacyChecked = false;
+
+function presetFromLegacy() {
+  legacyChecked = true;
+  const box = (id) => ($(id).value.trim() === '' ? null : Number($(id).value));
+  const now = Object.fromEntries(['mark', 'glory', 'despair', 'closeGlory', 'closeDespair'].map((id) => [id, box(id)]));
+  const { said, ...set } = singleRelicSettings(solver, session.level, session.memory, now);
+  if (!said) return;
+  for (const [id, v] of Object.entries(set)) $(id).value = v;
+  note([said]);
+  settingsChanged();
 }
 
 const SCREENS = {
@@ -483,6 +505,7 @@ async function readFiles(files) {
         note(['Switched to Smart Leveler: the counts view shows the whole board.']);
       }
       dispatch({ type: 'read', reading });
+      if (reading.kind === 'legacy' && !legacyChecked && !problem && $('mode').value !== 'advisor') presetFromLegacy();
     } catch (err) {
       shotStatus(`Could not read that image (${err.message}).`);
     }

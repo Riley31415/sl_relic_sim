@@ -150,18 +150,23 @@ function fakeSolver(game) {
     },
     expected: () => 0,
     finishChance: () => 1,
+    // the slots left against the fills the spirit power and every training could give
+    canFinish: (st) => 18 - st.gf - st.df <= st.sp + 2 * st.ms,
   };
 }
 
-function setup({ game, attempts = 3, level = 18, answers = [], levels = [], clickDelay, timing = { poll: 0, settle: 0, gap: [0, 0], retry: 30 } }) {
+function setup({
+  game, attempts = 3, level = 18, objective = { kind: 'max' }, strategies, answers = [], levels = [], clickDelay,
+  timing = { poll: 0, settle: 0, gap: [0, 0], retry: 30 },
+}) {
   const logs = [];
   const asked = [];
-  const askedLevels = [], seenLevels = [], settingsSeen = [];
+  const askedLevels = [], seenLevels = [], settingsSeen = [], presets = [];
   const solver = fakeSolver(game);
   const runner = new Runner({
     tab: { capture: async () => ({ img: null, ratio: 1, png: '' }), click: async (x, y) => game.click(x, y) },
     solver,
-    settings: { level, objective: { kind: 'max' }, attempts, clickDelay },
+    settings: { level, objective, strategies, attempts, clickDelay },
     ui: {
       log: (text, level) => logs.push({ text, level }),
       show() {},
@@ -176,6 +181,7 @@ function setup({ game, attempts = 3, level = 18, answers = [], levels = [], clic
       },
       levelSeen: (l) => seenLevels.push(l),
       useSettings: (x) => settingsSeen.push(x),
+      presetSettings: (x) => presets.push(x),
     },
     timing,
     // like classify(): a popup is only found when looked for - Compare at
@@ -198,7 +204,7 @@ function setup({ game, attempts = 3, level = 18, answers = [], levels = [], clic
     read: (screen) => (screen.rateTier == null ? null : { tier: screen.rateTier }),
   });
   const text = () => logs.map((l) => l.text).join('\n');
-  return { runner, logs, asked, askedLevels, seenLevels, settingsSeen, solver, text, last: () => logs[logs.length - 1] };
+  return { runner, logs, asked, askedLevels, seenLevels, settingsSeen, presets, solver, text, last: () => logs[logs.length - 1] };
 }
 
 /** Every decision was made at the rate the game really had. */
@@ -211,6 +217,31 @@ function rightRates(solver) {
 const lucky = (action) => action !== 'despair';
 // glory always fails, despair always succeeds
 const unlucky = (action) => action === 'train';
+
+test("Single Relic: settings the memory already meets are moved past it, once, on the first Hero's Legacy", async () => {
+  // 8/1 at level 18 is 38%: past the 30% mark and the 7/2 target, short of the 9/0 limit
+  const game = new FakeGame({ roll: unlucky, current: { glory: 8, despair: 1 } });
+  const strategies = { mark: 30, glory: 7, despair: 2, closeGlory: 9, closeDespair: 0 };
+  const { runner, logs, presets } = setup({ game, objective: { kind: 'max', mark: 30 }, strategies });
+  await runner.run();
+  // the mark 1% past it; the target one glory better (a tie with one despair better goes to glory); the limit as it was
+  assert.deepStrictEqual(presets, [{ mark: 39, glory: 9, despair: 1 }]);
+  assert.deepStrictEqual(runner.objective, { kind: 'max', mark: 39 });
+  assert.ok(logs.some((l) => /already met them: set Minimum Useful Amplification 39%; Glory Target 9, Despair Target 1\./.test(l.text)));
+  // three attempts, each result kept old and Hero's Legacy seen again: the settings stay
+  assert.strictEqual(runner.finished, 3);
+});
+
+test('Single Relic: settings the memory does not meet are left alone, and a better memory does not raise them', async () => {
+  // 3/4 is 7%: short of the 20% mark, the 7/2 target and the 9/0 limit
+  const game = new FakeGame({ roll: lucky, current: { glory: 3, despair: 4 } });
+  const strategies = { mark: 20, glory: 7, despair: 2, closeGlory: 9, closeDespair: 0 };
+  const { runner, last, presets } = setup({ game, objective: { kind: 'max', mark: 20 }, strategies });
+  await runner.run();
+  assert.match(last().text, /Found a better memory and applied it: 9 glory, 0 despair \(\+45%\)\. Stopped\./);
+  assert.deepStrictEqual(presets, []);
+  assert.deepStrictEqual(runner.objective, { kind: 'max', mark: 20 });
+});
 
 test('a better memory is applied and the run stops', async () => {
   const game = new FakeGame({ roll: lucky, current: { glory: 3, despair: 4 } });
@@ -477,11 +508,11 @@ test('a wrong change after a click stops the run', async () => {
 });
 
 test('every wipe is abandoned, up to the attempt limit', async () => {
-  // training always fails: every attempt runs dry
+  // training always fails: every attempt runs dry, and is let go once it can only wipe
   const game = new FakeGame({ roll: (a) => a === 'glory', current: { glory: 0, despair: 0 } });
   const { runner, last, text } = setup({ game, attempts: 3 });
   await runner.run();
-  assert.strictEqual(text().match(/abandoning the attempt/g).length, 3);
+  assert.strictEqual(text().match(/so it can only wipe - abandoning it/g).length, 3);
   assert.match(last().text, /Done: 3 attempt\(s\)/);
 });
 
@@ -566,6 +597,7 @@ test('a settled target is said once, and left to the solver', async () => {
     best: (st) => (st.gf === 9 && st.df === 9 ? 'done' : 'glory'),
     expected: () => 0,
     finishChance: () => 1,
+    canFinish: () => true,
   };
   const logs = [];
   const runner = new Runner({
@@ -615,6 +647,17 @@ test('an attempt that turns hopeless part-way is abandoned then', async () => {
   assert.match(text(), /^Glory at .*: fail/m); // it played a while
   assert.match(text(), /Nothing useful left in this attempt/);
   assert.ok(game.st.gf < 9, `abandoned with glory ${game.st.gf}/9 filled`);
+});
+
+test('an attempt that can only wipe is abandoned once it can, before the last fills', async () => {
+  // every training fails: once the spirit power and the mental strength
+  // left cannot fill the slots left, it stops, whatever the memory
+  const game = new FakeGame({ roll: () => false, current: { glory: 1, despair: 5 } });
+  const { runner, text } = setup({ game, attempts: 1 });
+  await runner.run();
+  assert.match(text(), /Nothing useful left in this attempt: the \d+ slots left cannot all be filled with \d+ spirit power and \d+ mental strength, so it can only wipe - abandoning it/);
+  assert.doesNotMatch(text(), /Out of spirit power and mental strength/);
+  assert.ok(game.st.sp > 0 || game.st.ms > 0, `abandoned only at the wipe: ${JSON.stringify(game.st)}`);
 });
 
 test('while a better result is still possible, the attempt is played', async () => {

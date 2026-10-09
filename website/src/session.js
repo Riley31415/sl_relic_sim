@@ -691,9 +691,12 @@ function adviseBoard(s, settings, solver) {
   // the options: every move the board allows, and Abandon Inheritance - each with where it leads
   const { moves, criteria: crit, best, abandon } = boardOptions(solver, att);
   const useless = abandon.useless && `even the best result still possible (${fmtMemory(abandon.useless)}) would not replace ${fmtMemory(att.from)}`;
-  const base = { moves, abandon: { wiped: abandon.wiped, useless }, criteria: crit, best, objective: att.objective, by: att.by, from: att.from };
+  const base = { moves, abandon: { wiped: abandon.wiped, doomed: abandon.doomed, useless }, criteria: crit, best, objective: att.objective, by: att.by, from: att.from };
   if (abandon.wiped) {
     return { ...base, press: 'abandon', headline: 'Abandon Inheritance', detail: 'Out of spirit power and mental strength with the bars unfinished: abandon it (the memory stays as it was; the pity still counts).' };
+  }
+  if (abandon.doomed) {
+    return { ...base, press: 'abandon', headline: 'Abandon Inheritance', detail: 'The spirit power and mental strength left cannot fill the bars, so this attempt can only wipe: abandon it now (the memory stays as it was; the pity still counts).' };
   }
   if (useless) {
     return { ...base, press: 'abandon', headline: 'Abandon Inheritance', detail: `Nothing useful is left in this attempt: ${useless}. Abandon it - the relics are spent either way, and the pity still counts.` };

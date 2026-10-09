@@ -85,9 +85,12 @@ function readSettings() {
   const clickDelay = Number($('clickDelay').value);
   if (!(clickDelay >= 0.1 && clickDelay <= 10)) throw new Error('click delay must be from 0.1 to 10 seconds');
   const [goalLevel, tier] = $('goal').value.split('+').map(Number);
+  // every strategy's settings, for Single Relic to check against the memory it finds
+  const box = (id) => ($(id).value.trim() === '' ? null : Number($(id).value));
+  const strategies = Object.fromEntries(['mark', 'glory', 'despair', 'closeGlory', 'closeDespair'].map((id) => [id, box(id)]));
   return {
     mode: $('mode').value, goal: { level: goalLevel, tier: tier || 0 },
-    level: num('level', 1, 20, 'Inheritor level'), objective, clickDelay,
+    level: num('level', 1, 20, 'Inheritor level'), objective, strategies, clickDelay,
   };
 }
 
@@ -108,6 +111,27 @@ function useSettings({ level, objective: o }) {
     $('closeDespair').value = o.despair;
   }
   if (o.kind === 'max') $('mark').value = o.mark ?? '';
+  applyLimits();
+  saveSettings();
+}
+
+/**
+ * Smart Leveler reached its Final Goal with the Demon Eye at `amp`%: the goal
+ * moves to the lowest tier above that.  The new goal's name, or null when
+ * there is no tier above.
+ */
+function raiseGoal(amp) {
+  const tiers = [...$('goal').options].filter((o) => o.value.includes('+') && Number(o.value.split('+')[1]) > amp);
+  const next = tiers.sort((a, b) => Number(a.value.split('+')[1]) - Number(b.value.split('+')[1]))[0];
+  if (!next) return null;
+  $('goal').value = next.value;
+  saveSettings();
+  return next.textContent;
+}
+
+/** Single Relic: the settings the current memory already met, moved past it (see singleRelicSettings). */
+function presetSettings(values) {
+  for (const [id, v] of Object.entries(values)) $(id).value = v;
   applyLimits();
   saveSettings();
 }
@@ -181,7 +205,7 @@ function show(frame, info = {}) {
   const worth = kind === 'close' ? `${info.expected?.toFixed(2)} useful steps until the limit`
     : kind === 'target' ? `${(100 * info.expected).toFixed(1)}% to hit the target`
       : maxScore(mark, runner?.current, info.expected);
-  $('expected').textContent = info.expected == null ? '-' : `${worth}, ${(100 * info.finish).toFixed(1)}% no wipe`;
+  $('expected').textContent = info.expected == null ? '-' : `${worth}, ${(100 * (1 - info.finish)).toFixed(1)}% wipe chance`;
   draw(frame, info);
 }
 
@@ -326,7 +350,7 @@ function finishAsk(tier) {
 }
 
 const ui = {
-  log, show, askTier, askLevel, askNumber, useSettings, levelSeen,
+  log, show, askTier, askLevel, askNumber, useSettings, levelSeen, raiseGoal, presetSettings,
   // the frame a run stopped on, unrecognised: kept for a look
   saveFrame: (frame) => (frame?.png ? download(frame) : null),
   // the attempt the advisor has in play, so a stopped run can finish it

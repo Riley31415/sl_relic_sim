@@ -210,7 +210,7 @@ function mainScreen(s, { solver, advice }) {
   }).join('');
   const totals = s.states.reduce(([g, d], [a, b]) => [g + a, d + b], [0, 0]);
   // Level Up lights as the game's does: the requirement met (the game showed it lit) or the pity bar full
-  const lit = advice?.press === 'levelup' || s.levelUp || s.pity >= 0.995;
+  const lit = advice?.press === 'levelup' || s.levelUp || (s.pity >= 0.995 && s.level < solver.maxLevel());
   return `<div class="scr scr-main">
     <div class="main-head">${levelStrip(s)}<div class="totals">Total <span class="tc-g">${gem('glory')} x ${totals[0]}</span> <span class="tc-d">${gem('despair')} x ${totals[1]}</span></div><span></span></div>
     <div class="tiles">${tiles}</div>

@@ -18,7 +18,7 @@
 // read it rather than guess.
 
 import { Runner, Halt, fmtMemory } from './runner.js';
-import { RELICS, chooseMemory, describeObjective } from './logic.js';
+import { RELICS, amplification, chooseMemory, describeObjective } from './logic.js';
 import { PER_ATTEMPT, isRoll, keepRule, rollOf } from './advice.js';
 
 export { RELICS, describeObjective };
@@ -62,13 +62,15 @@ export class Advisor extends Runner {
       throw new Halt(`The Level Up button is showing (the quest or the pity bar is done) - press Level Up in the game yourself, then press Start again.`);
     }
     if (s.view === 'levels') {
-      if (s.level !== this.level || this.pity === null || Math.abs(s.pity - this.pity) > 0.015) {
-        this.ui.log(`Main page: inheritor level ${s.level}, pity ${Math.round(s.pity * 100)}%.`);
+      // at the top level the bar shows MAX: there is no pity and nothing to level up to
+      const top = s.level >= this.solver.maxLevel();
+      if (s.level !== this.level || (!top && (this.pity === null || Math.abs(s.pity - this.pity) > 0.015))) {
+        this.ui.log(top ? `Main page: inheritor level ${s.level}, the top - farming the Demon Eye.` : `Main page: inheritor level ${s.level}, pity ${Math.round(s.pity * 100)}%.`);
       }
       this.level = s.level;
-      this.pity = s.pity;
+      this.pity = top ? null : s.pity;
       this.pityRead = true;
-      if (s.pity >= 0.995) throw new Halt(`The pity bar is full - level up to ${s.level + 1} in the game, then press Start again.`);
+      if (!top && s.pity >= 0.995) throw new Halt(`The pity bar is full - level up to ${s.level + 1} in the game, then press Start again.`);
       return this.toggle(frame, 'counts');
     }
     // the counts view
@@ -88,14 +90,22 @@ export class Advisor extends Runner {
         if (this.stock[i] === null && r.stock != null) [this.stock[i], this.fromBadge[i]] = [r.stock, true];
       });
     }
-    const unknown = this.stock.findIndex((n) => n === null);
-    if (unknown >= 0) {
-      const missing = this.stock.filter((n) => n === null).length;
-      this.ui.log(`Counts: glory ${counts.totals.glory}, despair ${counts.totals.despair}. `
-        + `${missing} stock${missing === 1 ? '' : 's'} not read off the badges - reading ${missing === 1 ? 'it' : 'them'} off Hero's Legacy.`);
-      return this.openRelic(frame, counts, unknown, true);
+    const unknown = RELICS.map((_, i) => i).filter((i) => this.stock[i] === null);
+    if (unknown.length) {
+      const missing = `${unknown.length} stock${unknown.length === 1 ? '' : 's'} not read off the badges`;
+      const it = unknown.length === 1 ? 'it is' : 'they are';
+      if (this.stockMatters(unknown)) {
+        this.ui.log(`Counts: glory ${counts.totals.glory}, despair ${counts.totals.despair}. ${missing} - reading ${unknown.length === 1 ? 'it' : 'them'} off Hero's Legacy.`);
+        return this.openRelic(frame, counts, unknown[0], true);
+      }
+      this.ui.log(`Counts: glory ${counts.totals.glory}, despair ${counts.totals.despair}. ${missing} - the advice is the same whatever ${it}.`);
     }
     return this.decide(frame, counts);
+  }
+
+  /** " (n on hand)" for relic `i`, once its stock is read. */
+  onHand(i) {
+    return this.stock[i] === null ? '' : ` (${this.stock[i]} on hand)`;
   }
 
   /** Switch the main page to `view` with the circular-arrows icon. */
@@ -111,10 +121,38 @@ export class Advisor extends Runner {
     return this.clickFor(frame, (s) => s.tiles?.[i], RELICS[i], (f) => f.screen.kind === 'legacy', `${RELICS[i]}'s Hero's Legacy`);
   }
 
-  /** The plan's next step from what the main page and the visits showed. */
-  advise() {
+  /**
+   * The plan's next step from what the main page and the visits showed.  A
+   * stock still unread is one the advice does not turn on (see stockMatters).
+   */
+  advise(stock = this.stock.map((n) => n ?? 0)) {
     // the pity matters to a plan that rolls spare relics only once they can fill the bar
-    return this.solver.advise(this.goal, this.level, this.states, this.stock, this.pity);
+    return this.solver.advise(this.goal, this.level, this.states, stock, this.pity);
+  }
+
+  /**
+   * Whether the plan's advice turns on the stocks not read yet (relics
+   * `unknown`): each tried with none on hand and with plenty, every way
+   * round.  The same advice every time and the visits to read them are
+   * skipped - at the top level, with the Demon Eye's stock read and 10 or
+   * more of it, the rest never matter.
+   */
+  stockMatters(unknown) {
+    if (unknown.length > 4) return true;
+    let seen = null;
+    for (let mask = 0; mask < 1 << unknown.length; mask++) {
+      const stock = this.stock.map((n) => n ?? 0);
+      unknown.forEach((i, k) => (stock[i] = mask & (1 << k) ? 9999 : 0));
+      let advice;
+      try {
+        advice = JSON.stringify(this.advise(stock));
+      } catch {
+        return true;
+      }
+      if (seen !== null && advice !== seen) return true;
+      seen = advice;
+    }
+    return false;
   }
 
   async decide(frame, screen) {
@@ -130,20 +168,27 @@ export class Advisor extends Runner {
       case 'summon':
         throw new Halt(`Nothing the plan needs is affordable (10 of a relic per attempt) - summon more relics, then press Start again.`);
       case 'convert':
-        throw new Halt('At the top level, short of the crit tier: convert other relics into Demon Eye of Weakness, then press Start again.');
-      case 'done':
-        throw new Halt(`The goal is reached (${this.goal.level}${this.goal.tier ? ` + Demon Eye at ${this.goal.tier}%` : ''}).`);
+        throw new Halt('The Demon Eye of Weakness has fewer than 10 on hand - convert other relics into it (Relic Conversion, 10 of a type for 7), then press Start again.');
+      case 'done': {
+        const reached = `The goal is reached (${this.goal.level}${this.goal.tier ? ` + Demon Eye at ${this.goal.tier}%` : ''}).`;
+        if (!this.goal.tier) throw new Halt(reached);
+        // the Final Goal moves on to the next tier above what the Demon Eye has now
+        const [g, d] = this.states[RELICS.indexOf('Demon Eye of Weakness')];
+        const amp = amplification({ glory: g, despair: d });
+        const next = this.ui.raiseGoal?.(amp);
+        throw new Halt(`${reached} The Demon Eye is at ${amp}%${next ? ` - the Final Goal is now ${next}; press Start to farm on.` : ', the highest tier.'}`);
+      }
       default:
     }
     if (a.relic == null || !a.objective) throw new Halt(`The plan said ${a.step} but gave no relic or way to play it - stopped.`);
     if (a.step === 'filler') {
-      this.ui.log(`PITY FILLER: nothing the ${goal} work needs has ${PER_ATTEMPT} on hand, so ${RELICS[a.relic]} (${this.stock[a.relic]} on hand) is rolled just for the pity `
+      this.ui.log(`PITY FILLER: nothing the ${goal} work needs has ${PER_ATTEMPT} on hand, so ${RELICS[a.relic]}${this.onHand(a.relic)} is rolled just for the pity `
         + `(+${this.solver.pityGain(this.level)} an attempt) - its memory changes only if a result improves it. Summon to give the plan something better.`, 'warn');
       return this.openRelic(frame, screen, a.relic, false);
     }
     const why = a.step === 'farm' ? 'farming the crit relic' : `for ${goal}`;
     const bar = a.bar ? ` toward ${a.bar.glory}${a.bar.despair === null ? '' : `/${a.bar.despair}`}` : '';
-    this.ui.log(`Advisor: ${RELICS[a.relic]} (${this.stock[a.relic]} on hand), ${why}${bar} - ${describeObjective(a.objective)}, keeping a roll that does better.`, 'good');
+    this.ui.log(`Advisor: ${RELICS[a.relic]}${this.onHand(a.relic)}, ${why}${bar} - ${describeObjective(a.objective)}, keeping a roll that does better.`, 'good');
     return this.openRelic(frame, screen, a.relic, false);
   }
 

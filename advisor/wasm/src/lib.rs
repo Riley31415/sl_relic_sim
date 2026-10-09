@@ -167,6 +167,13 @@ pub extern "C" fn finish_chance(gf: u32, gs: u32, df: u32, ds: u32, ms: u32, sp:
     solve(gf, gs, df, ds, ms, sp, tier).map_or(f64::NAN, |v| v.p_finish)
 }
 
+/// 1 if some play from a state can still fill both bars, 0 if it can only
+/// wipe, -1 for an invalid state.
+#[unsafe(no_mangle)]
+pub extern "C" fn can_finish(gf: u32, gs: u32, df: u32, ds: u32, ms: u32, sp: u32, tier: u32) -> i32 {
+    with_state(gf, gs, df, ds, ms, sp, tier, |solver, s| Some(i32::from(solver.can_finish(s)))).unwrap_or(-1)
+}
+
 // ------------------------------------------------------------------ moves
 
 /// Numbers out, for `move_value` and `outcomes`: every result's three
@@ -505,6 +512,12 @@ pub extern "C" fn quest(level: u32) -> i32 {
             3
         }
     }
+}
+
+/// The top inheritor level: no pity bar there, nothing above it.
+#[unsafe(no_mangle)]
+pub extern "C" fn max_level() -> u32 {
+    levels::MAX_LEVEL as u32
 }
 
 /// Pity points that level the inheritor up to `goal` without its requirement.

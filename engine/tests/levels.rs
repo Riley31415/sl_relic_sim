@@ -736,14 +736,23 @@ fn advice_levels_up_then_farms_the_tier() {
     board[2] = (8, 1); // 94 glory, 17 despair: level 19 is met
     let a = advise(target, 18, &board, &STOCK);
     assert_eq!((a.goal, a.next), (19, levels::Next::LevelUp));
-    // at the top, short of 46%: trade the other relics in, then farm
+    // at the top, short of 46%: farm while the crit relic has 10 on hand,
+    // however many others could be converted
     let a = advise(target, MAX_LEVEL, &board, &STOCK);
-    match &a.next {
+    assert!(matches!(a.next, levels::Next::Farm { .. }), "{:?}", a.next);
+    // short of 10: trade the other relics in
+    let mut short = STOCK;
+    short[CRIT] = 9;
+    match &advise(target, MAX_LEVEL, &board, &short).next {
         levels::Next::Convert(lots) => {
             assert!(lots.contains(&(0, 20)) && lots.iter().all(|&(i, _)| i != CRIT && i != 10));
         }
         other => panic!("expected a trade, got {other:?}"),
     }
+    // nothing to trade either: summon
+    let mut none = [0; 12];
+    none[CRIT] = 9;
+    assert_eq!(advise(target, MAX_LEVEL, &board, &none).next, levels::Next::Move(levels::Move::Summon));
     let mut stock = [0; 12];
     stock[CRIT] = 10;
     let a = advise(target, MAX_LEVEL, &board, &stock);

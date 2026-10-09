@@ -253,11 +253,13 @@ export function numberGlyphs(box, mode, max, s = 1) {
   if (!gs.length) return null;
   if (mode === 'trailing') {
     // from the right, while the glyphs read as digits (at small sizes the
-    // "x" before the number is nearly as tall as it)
-    const H = gs[gs.length - 1].h;
+    // "x" before the number is nearly as tall as it); digits run together
+    // along the bottom ("x102", its 1 and 0 joined) taken apart first
+    const ds = pairs(box, gs);
+    const H = ds[ds.length - 1].h;
     const out = [];
-    for (let i = gs.length - 1; i >= 0 && out.length < max; i--) {
-      const g = gs[i];
+    for (let i = ds.length - 1; i >= 0 && out.length < max; i--) {
+      const g = ds[i];
       if (g.h < 0.88 * H) break;
       if (out.length && out[0].x0 - g.x1 > 0.6 * H) break;
       if (out.length && readDigit(g) === null) break;
